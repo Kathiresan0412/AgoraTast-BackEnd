@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.providerRoutes = void 0;
+const express_1 = require("express");
+const provider_controller_1 = require("../controllers/provider.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+exports.providerRoutes = (0, express_1.Router)();
+exports.providerRoutes.use(auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['provider']));
+exports.providerRoutes.get('/dashboard-stats', provider_controller_1.getDashboardStats);
+exports.providerRoutes.get('/booking-requests', provider_controller_1.getBookingRequests);

@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.adminRoutes = void 0;
+const express_1 = require("express");
+const admin_controller_1 = require("../controllers/admin.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+exports.adminRoutes = (0, express_1.Router)();
+exports.adminRoutes.use(auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['admin']));
+exports.adminRoutes.get('/dashboard-stats', admin_controller_1.getDashboardStats);
+exports.adminRoutes.get('/pending-providers', admin_controller_1.getPendingProviders);
+exports.adminRoutes.post('/providers/:id/approve', admin_controller_1.approveProvider);
+exports.adminRoutes.post('/providers/:id/reject', admin_controller_1.rejectProvider);
