@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { supabaseAdmin } from '../config/supabase';
 import { env } from '../config/env';
 import bcrypt from 'bcryptjs';
+import '../types';
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {

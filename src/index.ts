@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import './types';
 
 import { authRoutes }     from './routes/auth.routes';
 import { tenantRoutes }   from './routes/tenant.routes';
