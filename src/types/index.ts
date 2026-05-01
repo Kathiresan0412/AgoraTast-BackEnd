@@ -1,13 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 
-export type UserRole = 'super_admin' | 'tenant_admin' | 'tenant_staff' | 'customer';
+export type UserRole = 'customer' | 'provider' | 'admin';
 
 export interface AuthUser {
   id: string;
   email: string;
   role: UserRole;
-  tenant_id: string | null;
-  full_name: string | null;
 }
 
 // Extend Express Request

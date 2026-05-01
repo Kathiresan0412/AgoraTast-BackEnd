@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../config/supabase';
 
 export const getServiceTypes = async (req: Request, res: Response): Promise<void> => {
   try {
-    const isAdmin = req.user?.role === 'super_admin';
+    const isAdmin = req.user?.role === 'admin';
     let query = supabaseAdmin.from('service_types').select('*');
     if (!isAdmin) {
       query = query.eq('active', true);
