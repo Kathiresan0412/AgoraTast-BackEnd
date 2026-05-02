@@ -4,8 +4,8 @@ exports.deleteServiceType = exports.toggleServiceTypeStatus = exports.updateServ
 const supabase_1 = require("../config/supabase");
 const getServiceTypes = async (req, res) => {
     try {
-        const isAdmin = req.user?.role === 'super_admin';
-        let query = supabase_1.supabaseAdmin.from('service_types').select('*');
+        const isAdmin = req.user?.role === 'admin';
+        let query = supabase_1.supabaseAdmin.from('service_types').select('*').order('sort_order').order('name');
         if (!isAdmin) {
             query = query.eq('active', true);
         }
@@ -21,10 +21,10 @@ const getServiceTypes = async (req, res) => {
 exports.getServiceTypes = getServiceTypes;
 const createServiceType = async (req, res) => {
     try {
-        const { name, description, icon, color, active } = req.body;
+        const { parent_id, slug, name, description, icon, color, active, sort_order } = req.body;
         const { data, error } = await supabase_1.supabaseAdmin
             .from('service_types')
-            .insert([{ name, description, icon, color, active }])
+            .insert([{ parent_id: parent_id || null, slug, name, description, icon, color, active, sort_order }])
             .select()
             .single();
         if (error)
@@ -39,10 +39,25 @@ exports.createServiceType = createServiceType;
 const updateServiceType = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, description, icon, color } = req.body;
+        const { parent_id, slug, name, description, icon, color, sort_order } = req.body;
+        const updates = {};
+        if ('parent_id' in req.body)
+            updates.parent_id = parent_id || null;
+        if ('slug' in req.body)
+            updates.slug = slug;
+        if ('name' in req.body)
+            updates.name = name;
+        if ('description' in req.body)
+            updates.description = description;
+        if ('icon' in req.body)
+            updates.icon = icon;
+        if ('color' in req.body)
+            updates.color = color;
+        if ('sort_order' in req.body)
+            updates.sort_order = sort_order;
         const { data, error } = await supabase_1.supabaseAdmin
             .from('service_types')
-            .update({ name, description, icon, color })
+            .update(updates)
             .eq('id', id)
             .select()
             .single();

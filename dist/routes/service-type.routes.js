@@ -12,16 +12,22 @@ exports.serviceTypeRoutes.get('/', auth_middleware_1.authenticate, service_type_
 // Only admins can modify
 exports.serviceTypeRoutes.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['admin']), [
     (0, express_validator_1.body)('name').notEmpty().withMessage('Name is required'),
+    (0, express_validator_1.body)('parent_id').optional({ nullable: true }).isUUID().withMessage('Parent id must be a valid UUID'),
+    (0, express_validator_1.body)('slug').optional().isString(),
     (0, express_validator_1.body)('description').optional().isString(),
     (0, express_validator_1.body)('icon').optional().isString(),
     (0, express_validator_1.body)('color').optional().isString(),
-    (0, express_validator_1.body)('active').optional().isBoolean()
+    (0, express_validator_1.body)('active').optional().isBoolean(),
+    (0, express_validator_1.body)('sort_order').optional().isInt()
 ], validate_middleware_1.validateRequest, service_type_controller_1.createServiceType);
 exports.serviceTypeRoutes.put('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['admin']), [
+    (0, express_validator_1.body)('parent_id').optional({ nullable: true }).isUUID().withMessage('Parent id must be a valid UUID'),
+    (0, express_validator_1.body)('slug').optional().isString(),
     (0, express_validator_1.body)('name').optional().isString(),
     (0, express_validator_1.body)('description').optional().isString(),
     (0, express_validator_1.body)('icon').optional().isString(),
-    (0, express_validator_1.body)('color').optional().isString()
+    (0, express_validator_1.body)('color').optional().isString(),
+    (0, express_validator_1.body)('sort_order').optional().isInt()
 ], validate_middleware_1.validateRequest, service_type_controller_1.updateServiceType);
 exports.serviceTypeRoutes.patch('/:id/status', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['admin']), [
     (0, express_validator_1.body)('active').isBoolean().withMessage('Active status must be a boolean')

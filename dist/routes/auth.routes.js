@@ -7,6 +7,12 @@ const auth_controller_1 = require("../controllers/auth.controller");
 const validate_middleware_1 = require("../middleware/validate.middleware");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 exports.authRoutes = (0, express_1.Router)();
+exports.authRoutes.post('/register', [
+    (0, express_validator_1.body)('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
+    (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
+    (0, express_validator_1.body)('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    (0, express_validator_1.body)('role').optional().isIn(['customer', 'provider']).withMessage('Role must be customer or provider'),
+], validate_middleware_1.validateRequest, auth_controller_1.register);
 exports.authRoutes.post('/login', [
     (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
     (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required')

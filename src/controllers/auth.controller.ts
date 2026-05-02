@@ -47,6 +47,24 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    if (newUser.role === 'provider') {
+      const { error: providerError } = await supabaseAdmin
+        .from('providers')
+        .insert({
+          user_id: newUser.id,
+          business_name: name,
+          category: 'General',
+          location: '',
+          status: 'pending',
+        });
+
+      if (providerError) {
+        console.error('Provider profile create error:', providerError);
+        res.status(400).json({ error: providerError.message });
+        return;
+      }
+    }
+
     // Generate JWT
     const token = jwt.sign(
       { id: newUser.id, role: newUser.role, email: newUser.email },

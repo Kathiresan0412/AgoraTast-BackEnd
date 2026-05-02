@@ -8,6 +8,7 @@ const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
+require("./types");
 const auth_routes_1 = require("./routes/auth.routes");
 const tenant_routes_1 = require("./routes/tenant.routes");
 const service_routes_1 = require("./routes/service.routes");
@@ -19,12 +20,18 @@ const user_routes_1 = require("./routes/user.routes");
 const provider_routes_1 = require("./routes/provider.routes");
 const message_routes_1 = require("./routes/message.routes");
 const service_type_routes_1 = require("./routes/service-type.routes");
+const logger_1 = require("./config/logger");
 const app = (0, express_1.default)();
 // --- Security & Middleware ---
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use((0, morgan_1.default)('combined'));
+morgan_1.default.token('user-id', req => req.user?.id || '-');
+morgan_1.default.token('user-role', req => req.user?.role || '-');
+app.use((0, morgan_1.default)(':date[iso] :remote-addr :method :url :status :response-time ms user=:user-id role=:user-role', {
+    stream: logger_1.apiLogStream,
+}));
 // Rate limiting
 const limiter = (0, express_rate_limit_1.default)({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/', limiter);
@@ -51,4 +58,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
     console.log(`API running on port ${PORT}`);
+    console.log(`API logs writing to ${logger_1.apiLogPath}`);
 });

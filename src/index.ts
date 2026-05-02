@@ -16,6 +16,7 @@ import { userRoutes }     from './routes/user.routes';
 import { providerRoutes } from './routes/provider.routes';
 import { messageRoutes }  from './routes/message.routes';
 import { serviceTypeRoutes } from './routes/service-type.routes';
+import { apiLogPath, apiLogStream } from './config/logger';
 
 const app = express();
 
@@ -24,6 +25,11 @@ app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined'));
+morgan.token('user-id', req => (req as express.Request).user?.id || '-');
+morgan.token('user-role', req => (req as express.Request).user?.role || '-');
+app.use(morgan(':date[iso] :remote-addr :method :url :status :response-time ms user=:user-id role=:user-role', {
+  stream: apiLogStream,
+}));
 
 // Rate limiting
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
@@ -56,4 +62,5 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`API running on port ${PORT}`);
+  console.log(`API logs writing to ${apiLogPath}`);
 });

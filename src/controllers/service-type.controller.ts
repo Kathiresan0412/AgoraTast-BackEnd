@@ -4,7 +4,7 @@ import { supabaseAdmin } from '../config/supabase';
 export const getServiceTypes = async (req: Request, res: Response): Promise<void> => {
   try {
     const isAdmin = req.user?.role === 'admin';
-    let query = supabaseAdmin.from('service_types').select('*');
+    let query = supabaseAdmin.from('service_types').select('*').order('sort_order').order('name');
     if (!isAdmin) {
       query = query.eq('active', true);
     }
@@ -19,10 +19,10 @@ export const getServiceTypes = async (req: Request, res: Response): Promise<void
 
 export const createServiceType = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, description, icon, color, active } = req.body;
+    const { parent_id, slug, name, description, icon, color, active, sort_order } = req.body;
     const { data, error } = await supabaseAdmin
       .from('service_types')
-      .insert([{ name, description, icon, color, active }])
+      .insert([{ parent_id: parent_id || null, slug, name, description, icon, color, active, sort_order }])
       .select()
       .single();
 
@@ -36,10 +36,20 @@ export const createServiceType = async (req: Request, res: Response): Promise<vo
 export const updateServiceType = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, description, icon, color } = req.body;
+    const { parent_id, slug, name, description, icon, color, sort_order } = req.body;
+    const updates: Record<string, unknown> = {};
+
+    if ('parent_id' in req.body) updates.parent_id = parent_id || null;
+    if ('slug' in req.body) updates.slug = slug;
+    if ('name' in req.body) updates.name = name;
+    if ('description' in req.body) updates.description = description;
+    if ('icon' in req.body) updates.icon = icon;
+    if ('color' in req.body) updates.color = color;
+    if ('sort_order' in req.body) updates.sort_order = sort_order;
+
     const { data, error } = await supabaseAdmin
       .from('service_types')
-      .update({ name, description, icon, color })
+      .update(updates)
       .eq('id', id)
       .select()
       .single();

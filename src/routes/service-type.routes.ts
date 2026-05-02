@@ -16,10 +16,13 @@ serviceTypeRoutes.post(
   authorize(['admin']),
   [
     body('name').notEmpty().withMessage('Name is required'),
+    body('parent_id').optional({ nullable: true }).isUUID().withMessage('Parent id must be a valid UUID'),
+    body('slug').optional().isString(),
     body('description').optional().isString(),
     body('icon').optional().isString(),
     body('color').optional().isString(),
-    body('active').optional().isBoolean()
+    body('active').optional().isBoolean(),
+    body('sort_order').optional().isInt()
   ],
   validateRequest,
   createServiceType
@@ -30,10 +33,13 @@ serviceTypeRoutes.put(
   authenticate,
   authorize(['admin']),
   [
+    body('parent_id').optional({ nullable: true }).isUUID().withMessage('Parent id must be a valid UUID'),
+    body('slug').optional().isString(),
     body('name').optional().isString(),
     body('description').optional().isString(),
     body('icon').optional().isString(),
-    body('color').optional().isString()
+    body('color').optional().isString(),
+    body('sort_order').optional().isInt()
   ],
   validateRequest,
   updateServiceType
