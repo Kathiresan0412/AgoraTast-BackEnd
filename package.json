@@ -16,8 +16,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@supabase/ssr": "^0.10.2",
-    "@supabase/supabase-js": "^2.105.1",
+    "@supabase/supabase-js": "2.103.1",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

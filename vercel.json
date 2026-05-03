@@ -3,7 +3,10 @@
   "buildCommand": "npm run build",
   "functions": {
     "api/index.js": {
-      "includeFiles": "node_modules/@supabase/realtime-js/dist/**"
+      "includeFiles": [
+        "dist/**",
+        "node_modules/@supabase/**"
+      ]
     }
   },
   "rewrites": [
