@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { supabaseAdmin } from '../config/supabase';
+import { getRequestLogContext, serializeError, writeApiEvent, writeAuthEvent } from '../config/logger';
 
 const getConversationId = (userA: string, userB: string) => {
   const hash = crypto
@@ -66,6 +67,13 @@ const mapMessage = (message: any, usersById: Map<string, any>) => {
   };
 };
 
+const logControllerError = (event: string, req: Request, err: unknown) => {
+  writeApiEvent('error', event, {
+    ...getRequestLogContext(req),
+    error: serializeError(err),
+  });
+};
+
 export const getConversations = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
@@ -108,7 +116,7 @@ export const getConversations = async (req: Request, res: Response): Promise<voi
       return bLast.localeCompare(aLast);
     }));
   } catch (err) {
-    console.error('Get conversations error:', err);
+    logControllerError('get_conversations_error', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -128,6 +136,14 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
 
     const rows = messages || [];
     if (rows.length && !rows.some((message: any) => message.from_user_id === userId || message.to_user_id === userId)) {
+      writeAuthEvent('message_forbidden_not_participant', {
+        ...getRequestLogContext(req),
+        status: 403,
+        conversationId,
+        userId,
+        participantIds: Array.from(new Set(rows.flatMap((message: any) => [message.from_user_id, message.to_user_id]))),
+        messageCount: rows.length,
+      });
       res.status(403).json({ error: 'Forbidden: You are not part of this conversation' });
       return;
     }
@@ -135,7 +151,7 @@ export const getMessages = async (req: Request, res: Response): Promise<void> =>
     const usersById = await getUsersByIds(rows.flatMap((message: any) => [message.from_user_id, message.to_user_id]));
     res.json(rows.map((message: any) => mapMessage(message, usersById)));
   } catch (err) {
-    console.error('Get messages error:', err);
+    logControllerError('get_messages_error', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -187,7 +203,7 @@ export const sendMessage = async (req: Request, res: Response): Promise<void> =>
     const usersById = await getUsersByIds([fromUserId, resolvedToUserId]);
     res.status(201).json(mapMessage(message, usersById));
   } catch (err) {
-    console.error('Send message error:', err);
+    logControllerError('send_message_error', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -210,6 +226,13 @@ export const updateMessage = async (req: Request, res: Response): Promise<void> 
     }
 
     if (existing.from_user_id !== userId) {
+      writeAuthEvent('message_forbidden_edit_owner_mismatch', {
+        ...getRequestLogContext(req),
+        status: 403,
+        messageId,
+        userId,
+        ownerId: existing.from_user_id,
+      });
       res.status(403).json({ error: 'Forbidden: You can only edit your own messages' });
       return;
     }
@@ -226,7 +249,7 @@ export const updateMessage = async (req: Request, res: Response): Promise<void> 
     const usersById = await getUsersByIds([message.from_user_id, message.to_user_id]);
     res.json(mapMessage(message, usersById));
   } catch (err) {
-    console.error('Update message error:', err);
+    logControllerError('update_message_error', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -248,6 +271,13 @@ export const deleteMessage = async (req: Request, res: Response): Promise<void> 
     }
 
     if (existing.from_user_id !== userId) {
+      writeAuthEvent('message_forbidden_delete_owner_mismatch', {
+        ...getRequestLogContext(req),
+        status: 403,
+        messageId,
+        userId,
+        ownerId: existing.from_user_id,
+      });
       res.status(403).json({ error: 'Forbidden: You can only delete your own messages' });
       return;
     }
@@ -261,7 +291,7 @@ export const deleteMessage = async (req: Request, res: Response): Promise<void> 
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Delete message error:', err);
+    logControllerError('delete_message_error', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -280,7 +310,7 @@ export const markAsRead = async (req: Request, res: Response): Promise<void> => 
     if (error) throw error;
     res.json({ success: true });
   } catch (err) {
-    console.error('Mark messages read error:', err);
+    logControllerError('mark_messages_read_error', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
