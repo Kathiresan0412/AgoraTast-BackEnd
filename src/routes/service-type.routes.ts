@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { getServiceTypes, createServiceType, updateServiceType, toggleServiceTypeStatus, deleteServiceType } from '../controllers/service-type.controller';
-import { authenticate, authorize } from '../middleware/auth.middleware';
+import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
 
 export const serviceTypeRoutes = Router();
 
-// Publicly accessible but logic filters out inactive ones unless admin (handled in controller)
-serviceTypeRoutes.get('/', authenticate, getServiceTypes);
+// Publicly accessible; authenticated admins can also see inactive records.
+serviceTypeRoutes.get('/', optionalAuthenticate, getServiceTypes);
 
 // Only admins can modify
 serviceTypeRoutes.post(

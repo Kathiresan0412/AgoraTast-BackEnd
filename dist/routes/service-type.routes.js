@@ -7,8 +7,8 @@ const service_type_controller_1 = require("../controllers/service-type.controlle
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const validate_middleware_1 = require("../middleware/validate.middleware");
 exports.serviceTypeRoutes = (0, express_1.Router)();
-// Publicly accessible but logic filters out inactive ones unless admin (handled in controller)
-exports.serviceTypeRoutes.get('/', auth_middleware_1.authenticate, service_type_controller_1.getServiceTypes);
+// Publicly accessible; authenticated admins can also see inactive records.
+exports.serviceTypeRoutes.get('/', auth_middleware_1.optionalAuthenticate, service_type_controller_1.getServiceTypes);
 // Only admins can modify
 exports.serviceTypeRoutes.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['admin']), [
     (0, express_validator_1.body)('name').notEmpty().withMessage('Name is required'),
