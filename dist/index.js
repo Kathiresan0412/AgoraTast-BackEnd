@@ -22,6 +22,25 @@ const message_routes_1 = require("./routes/message.routes");
 const service_type_routes_1 = require("./routes/service-type.routes");
 const logger_1 = require("./config/logger");
 const app = (0, express_1.default)();
+const apiOverview = {
+    name: 'AgoraTask API',
+    status: 'ok',
+    version: '1.0.0',
+    routes: {
+        health: '/health',
+        auth: '/api/auth',
+        users: '/api/users',
+        admin: '/api/admin',
+        provider: '/api/provider',
+        serviceTypes: '/api/service-types',
+        bookings: '/api/bookings',
+        messages: '/api/messages',
+        services: '/api/v1/services',
+        categories: '/api/v1/categories',
+        reviews: '/api/v1/reviews',
+        tenants: '/api/v1/tenants',
+    },
+};
 // --- Security & Middleware ---
 app.use((0, helmet_1.default)());
 app.use((0, cors_1.default)({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
@@ -36,6 +55,8 @@ app.use((0, morgan_1.default)(':date[iso] :remote-addr :method :url :status :res
 const limiter = (0, express_rate_limit_1.default)({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/', limiter);
 // --- Routes ---
+app.get('/', (_, res) => res.json(apiOverview));
+app.get('/api', (_, res) => res.json(apiOverview));
 app.use('/api/auth', auth_routes_1.authRoutes);
 app.use('/api/users', user_routes_1.userRoutes);
 app.use('/api/admin', admin_routes_1.adminRoutes);

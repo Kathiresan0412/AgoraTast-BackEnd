@@ -20,6 +20,26 @@ import { apiLogPath, apiLogStream } from './config/logger';
 
 const app = express();
 
+  const apiOverview = {
+  name: 'AgoraTask API',
+  status: 'ok',
+  version: '1.0.0',
+  routes: {
+    health: '/health',
+    auth: '/api/auth',
+    users: '/api/users',
+    admin: '/api/admin',
+    provider: '/api/provider',
+    serviceTypes: '/api/service-types',
+    bookings: '/api/bookings',
+    messages: '/api/messages',
+    services: '/api/v1/services',
+    categories: '/api/v1/categories',
+    reviews: '/api/v1/reviews',
+    tenants: '/api/v1/tenants',
+  },
+};
+
 // --- Security & Middleware ---
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
@@ -36,6 +56,9 @@ const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/', limiter);
 
 // --- Routes ---
+app.get('/', (_, res) => res.json(apiOverview));
+app.get('/api', (_, res) => res.json(apiOverview));
+
 app.use('/api/auth',          authRoutes);
 app.use('/api/users',         userRoutes);
 app.use('/api/admin',         adminRoutes);
