@@ -5,13 +5,57 @@ import { env } from '../config/env';
 import bcrypt from 'bcryptjs';
 import '../types';
 
+type GoogleTokenInfo = {
+  aud?: string;
+  email?: string;
+  email_verified?: string | boolean;
+  name?: string;
+  picture?: string;
+  sub?: string;
+};
+
+const allowedSelfRegistrationRoles = ['customer', 'provider'];
+
+const getSelfRegistrationRole = (role: unknown) =>
+  typeof role === 'string' && allowedSelfRegistrationRoles.includes(role) ? role : 'customer';
+
+const createJwt = (user: { id: string; role: string; email: string }) =>
+  jwt.sign(
+    { id: user.id, role: user.role, email: user.email },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRES_IN } as any
+  );
+
+const createProviderProfile = async (userId: string, name: string) =>
+  supabaseAdmin
+    .from('providers')
+    .insert({
+      user_id: userId,
+      business_name: name,
+      category: 'General',
+      location: '',
+      status: 'pending',
+    });
+
+const sendAuthResponse = (res: Response, status: number, token: string, user: any): void => {
+  res.status(status).json({
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      profileImage: user.profile_image,
+    },
+  });
+};
+
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password, role } = req.body;
 
     // Only allow customer/provider self-registration
-    const allowedRoles = ['customer', 'provider'];
-    const userRole = allowedRoles.includes(role) ? role : 'customer';
+    const userRole = getSelfRegistrationRole(role);
 
     // Check if user already exists
     const { data: existingUser } = await supabaseAdmin
@@ -48,15 +92,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (newUser.role === 'provider') {
-      const { error: providerError } = await supabaseAdmin
-        .from('providers')
-        .insert({
-          user_id: newUser.id,
-          business_name: name,
-          category: 'General',
-          location: '',
-          status: 'pending',
-        });
+      const { error: providerError } = await createProviderProfile(newUser.id, name);
 
       if (providerError) {
         console.error('Provider profile create error:', providerError);
@@ -66,22 +102,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Generate JWT
-    const token = jwt.sign(
-      { id: newUser.id, role: newUser.role, email: newUser.email },
-      env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN } as any
-    );
+    const token = createJwt(newUser);
 
-    res.status(201).json({
-      token,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        profileImage: newUser.profile_image,
-      },
-    });
+    sendAuthResponse(res, 201, token, newUser);
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -109,24 +132,97 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const token = jwt.sign(
-      { id: user.id, role: user.role, email: user.email },
-      env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN } as any
-    );
+    const token = createJwt(user);
 
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        profileImage: user.profile_image,
-      },
-    });
+    sendAuthResponse(res, 200, token, user);
   } catch (err) {
     console.error('Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const googleLogin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { credential, role } = req.body;
+
+    if (!env.GOOGLE_CLIENT_ID) {
+      res.status(500).json({ error: 'Google login is not configured' });
+      return;
+    }
+
+    const tokenInfoResponse = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
+    );
+
+    if (!tokenInfoResponse.ok) {
+      res.status(401).json({ error: 'Invalid Google credential' });
+      return;
+    }
+
+    const tokenInfo = await tokenInfoResponse.json() as GoogleTokenInfo;
+    const isVerifiedEmail = tokenInfo.email_verified === true || tokenInfo.email_verified === 'true';
+
+    if (tokenInfo.aud !== env.GOOGLE_CLIENT_ID || !tokenInfo.email || !isVerifiedEmail) {
+      res.status(401).json({ error: 'Invalid Google account' });
+      return;
+    }
+
+    const email = tokenInfo.email.toLowerCase();
+    const name = tokenInfo.name || email.split('@')[0];
+    const userRole = getSelfRegistrationRole(role);
+
+    const { data: existingUser, error: existingUserError } = await supabaseAdmin
+      .from('users')
+      .select('id, name, email, role, profile_image')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingUserError) {
+      console.error('Google login lookup error:', existingUserError);
+      res.status(400).json({ error: existingUserError.message });
+      return;
+    }
+
+    if (existingUser) {
+      const token = createJwt(existingUser);
+      sendAuthResponse(res, 200, token, existingUser);
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(`google:${tokenInfo.sub || email}:${Date.now()}`, 12);
+
+    const { data: newUser, error: createUserError } = await supabaseAdmin
+      .from('users')
+      .insert({
+        name,
+        email,
+        password_hash: passwordHash,
+        role: userRole,
+        profile_image: tokenInfo.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
+      })
+      .select('id, name, email, role, profile_image')
+      .single();
+
+    if (createUserError) {
+      console.error('Google user create error:', createUserError);
+      res.status(400).json({ error: createUserError.message });
+      return;
+    }
+
+    if (newUser.role === 'provider') {
+      const { error: providerError } = await createProviderProfile(newUser.id, name);
+
+      if (providerError) {
+        console.error('Google provider profile create error:', providerError);
+        res.status(400).json({ error: providerError.message });
+        return;
+      }
+    }
+
+    const token = createJwt(newUser);
+    sendAuthResponse(res, 201, token, newUser);
+  } catch (err) {
+    console.error('Google login error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

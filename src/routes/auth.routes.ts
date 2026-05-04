@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { register, login, getMe } from '../controllers/auth.controller';
+import { register, login, googleLogin, getMe } from '../controllers/auth.controller';
 import { validateRequest } from '../middleware/validate.middleware';
 import { authenticate } from '../middleware/auth.middleware';
 
@@ -26,6 +26,16 @@ authRoutes.post(
   ],
   validateRequest,
   login
+);
+
+authRoutes.post(
+  '/google',
+  [
+    body('credential').notEmpty().withMessage('Google credential is required'),
+    body('role').optional().isIn(['customer', 'provider']).withMessage('Role must be customer or provider'),
+  ],
+  validateRequest,
+  googleLogin
 );
 
 authRoutes.get('/me', authenticate, getMe);

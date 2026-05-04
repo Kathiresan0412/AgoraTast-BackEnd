@@ -18,6 +18,9 @@ export const env = {
   // Frontend
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
 
+  // Google OAuth
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+
   // Email (Nodemailer)
   SMTP_HOST: process.env.SMTP_HOST || '',
   SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
