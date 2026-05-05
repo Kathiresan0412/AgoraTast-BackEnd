@@ -11,7 +11,7 @@ exports.providerRoutes.use(auth_middleware_1.authenticate, (0, auth_middleware_1
 exports.providerRoutes.get('/dashboard-stats', provider_controller_1.getDashboardStats);
 exports.providerRoutes.get('/booking-requests', provider_controller_1.getBookingRequests);
 exports.providerRoutes.get('/services', provider_controller_1.getProviderServices);
-exports.providerRoutes.post('/services', [
+const serviceBodyValidation = [
     (0, express_validator_1.body)('title').notEmpty().withMessage('Title is required'),
     (0, express_validator_1.body)('description').optional().isString(),
     (0, express_validator_1.body)('base_price').optional({ nullable: true }).isNumeric(),
@@ -22,4 +22,7 @@ exports.providerRoutes.post('/services', [
     (0, express_validator_1.body)('status').optional().isIn(['draft', 'active', 'paused', 'pending_review', 'rejected']),
     (0, express_validator_1.body)('service_type_ids').isArray({ min: 1 }).withMessage('Select at least one service type'),
     (0, express_validator_1.body)('service_type_ids.*').isUUID().withMessage('Service type ids must be valid UUIDs'),
-], validate_middleware_1.validateRequest, provider_controller_1.createProviderService);
+];
+exports.providerRoutes.post('/services', serviceBodyValidation, validate_middleware_1.validateRequest, provider_controller_1.createProviderService);
+exports.providerRoutes.put('/services/:serviceId', [(0, express_validator_1.param)('serviceId').isUUID().withMessage('Service ID must be valid'), ...serviceBodyValidation], validate_middleware_1.validateRequest, provider_controller_1.updateProviderService);
+exports.providerRoutes.delete('/services/:serviceId', [(0, express_validator_1.param)('serviceId').isUUID().withMessage('Service ID must be valid')], validate_middleware_1.validateRequest, provider_controller_1.deleteProviderService);

@@ -68,6 +68,26 @@ export const getProviderServices = async (req: Request, res: Response): Promise<
   }
 };
 
+const fetchProviderService = async (serviceId: string) => {
+  const { data, error } = await supabaseAdmin
+    .from('provider_services')
+    .select(`
+      *,
+      provider_service_types (
+        service_type:service_types (*)
+      )
+    `)
+    .eq('id', serviceId)
+    .single();
+
+  if (error) throw error;
+
+  return {
+    ...data,
+    service_types: data.provider_service_types?.map((item: any) => item.service_type) || [],
+  };
+};
+
 export const createProviderService = async (req: Request, res: Response): Promise<void> => {
   try {
     const providerId = req.user?.id;
@@ -117,23 +137,115 @@ export const createProviderService = async (req: Request, res: Response): Promis
       throw typesError;
     }
 
-    const { data: created, error: fetchError } = await supabaseAdmin
+    res.status(201).json(await fetchProviderService(service.id));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateProviderService = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const providerId = req.user?.id;
+    const serviceId = String(req.params.serviceId);
+    const {
+      title,
+      description,
+      base_price,
+      price_type,
+      duration_mins,
+      service_area,
+      images,
+      status,
+      service_type_ids,
+    } = req.body;
+
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from('provider_services')
-      .select(`
-        *,
-        provider_service_types (
-          service_type:service_types (*)
-        )
-      `)
-      .eq('id', service.id)
+      .select('id, provider_id')
+      .eq('id', serviceId)
       .single();
 
-    if (fetchError) throw fetchError;
+    if (existingError || !existing) {
+      res.status(404).json({ error: 'Service not found' });
+      return;
+    }
 
-    res.status(201).json({
-      ...created,
-      service_types: created.provider_service_types?.map((item: any) => item.service_type) || [],
-    });
+    if (existing.provider_id !== providerId) {
+      res.status(403).json({ error: 'Forbidden: You can only update your own services' });
+      return;
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('provider_services')
+      .update({
+        title,
+        description,
+        base_price,
+        price_type,
+        duration_mins,
+        service_area,
+        images,
+        status,
+      })
+      .eq('id', serviceId);
+
+    if (updateError) throw updateError;
+
+    const uniqueTypeIds = [...new Set(service_type_ids as string[])];
+
+    const { error: deleteTypesError } = await supabaseAdmin
+      .from('provider_service_types')
+      .delete()
+      .eq('provider_service_id', serviceId);
+
+    if (deleteTypesError) throw deleteTypesError;
+
+    const typeRows = uniqueTypeIds.map(serviceTypeId => ({
+      provider_service_id: serviceId,
+      service_type_id: serviceTypeId,
+    }));
+
+    const { error: typesError } = await supabaseAdmin
+      .from('provider_service_types')
+      .insert(typeRows);
+
+    if (typesError) throw typesError;
+
+    res.json(await fetchProviderService(serviceId));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const deleteProviderService = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const providerId = req.user?.id;
+    const serviceId = String(req.params.serviceId);
+
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('provider_services')
+      .select('id, provider_id')
+      .eq('id', serviceId)
+      .single();
+
+    if (existingError || !existing) {
+      res.status(404).json({ error: 'Service not found' });
+      return;
+    }
+
+    if (existing.provider_id !== providerId) {
+      res.status(403).json({ error: 'Forbidden: You can only delete your own services' });
+      return;
+    }
+
+    const { error } = await supabaseAdmin
+      .from('provider_services')
+      .delete()
+      .eq('id', serviceId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

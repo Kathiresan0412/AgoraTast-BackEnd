@@ -20,6 +20,7 @@ const getUsersByIds = async (ids: string[]) => {
 
 const mapReview = (review: any, usersById: Map<string, any>) => {
   const customer = usersById.get(review.customer_id);
+  const profileImage = customer?.profile_image || '';
 
   return {
     id: review.id,
@@ -29,7 +30,7 @@ const mapReview = (review: any, usersById: Map<string, any>) => {
     customerId: review.customer_id,
     customerName: customer?.name || 'Customer',
     customerEmail: customer?.email || '',
-    customerProfileImage: customer?.profile_image || '',
+    customerProfileImage: profileImage.startsWith('data:image/') ? '' : profileImage,
     rating: review.rating,
     comment: review.comment || '',
     status: review.status,
@@ -46,18 +47,20 @@ const logControllerError = (event: string, req: Request, err: unknown) => {
 };
 
 const getTargetFromRequest = (req: Request) => {
+  const body = req.body || {};
+
   const providerServiceId =
     req.params.serviceId ||
-    req.body.providerServiceId ||
-    req.body.provider_service_id ||
+    body.providerServiceId ||
+    body.provider_service_id ||
     req.query.providerServiceId ||
     req.query.provider_service_id ||
     req.query.serviceId;
 
   const providerId =
     req.params.providerId ||
-    req.body.providerId ||
-    req.body.provider_id ||
+    body.providerId ||
+    body.provider_id ||
     req.query.providerId ||
     req.query.provider_id;
 
