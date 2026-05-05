@@ -147,6 +147,16 @@ const sendMessage = async (req, res) => {
         const fromUserId = req.user?.id;
         let resolvedToUserId = toUserId;
         if (!resolvedToUserId && toEmail) {
+            if (req.user?.role !== 'admin') {
+                (0, logger_1.writeAuthEvent)('message_forbidden_email_recipient_lookup', {
+                    ...(0, logger_1.getRequestLogContext)(req),
+                    status: 403,
+                    userId: fromUserId,
+                    role: req.user?.role,
+                });
+                res.status(403).json({ error: 'Forbidden: Only admins can start a conversation by email' });
+                return;
+            }
             const { data: recipient, error } = await supabase_1.supabaseAdmin
                 .from('users')
                 .select('id')
