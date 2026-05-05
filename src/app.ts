@@ -21,6 +21,14 @@ import { apiLogStream, getRequestLogContext, serializeError, writeApiEvent } fro
 
 const app = express();
 
+ const allowedOrigins = [
+  ...(process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean),
+  'http://192.168.8.101:3000',
+ ];
+
 const apiOverview = {
   name: 'AgoraTask API',
   status: 'ok',
@@ -62,7 +70,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined'));
 morgan.token('user-id', req => (req as express.Request).user?.id || '-');
@@ -72,8 +80,20 @@ app.use(morgan(':date[iso] :remote-addr :method :url :status :response-time ms r
 }));
 
 // Rate limiting
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-app.use('/api/', limiter);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.API_RATE_LIMIT_MAX || 600),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/auth', authLimiter);
+app.use('/api/', apiLimiter);
 
 // --- Routes ---
 app.get('/', (_, res) => res.json(apiOverview));
