@@ -2,6 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteProviderService = exports.updateProviderService = exports.createProviderService = exports.getProviderServices = exports.getBookingRequests = exports.getDashboardStats = void 0;
 const supabase_1 = require("../config/supabase");
+const normalizeProviderServiceStatus = (status) => {
+    if (status === 'draft' || status === 'paused') {
+        return status;
+    }
+    return 'pending_review';
+};
 const getDashboardStats = async (req, res) => {
     try {
         const providerId = req.user?.id;
@@ -102,7 +108,7 @@ const createProviderService = async (req, res) => {
                 duration_mins,
                 service_area,
                 images,
-                status,
+                status: normalizeProviderServiceStatus(status),
             }])
             .select()
             .single();
@@ -154,7 +160,7 @@ const updateProviderService = async (req, res) => {
             duration_mins,
             service_area,
             images,
-            status,
+            status: normalizeProviderServiceStatus(status),
         })
             .eq('id', serviceId);
         if (updateError)

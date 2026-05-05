@@ -20,6 +20,31 @@ const mapProvider = (provider: any) => {
   };
 };
 
+const mapService = (service: any) => {
+  const provider = Array.isArray(service.users) ? service.users[0] : service.users;
+
+  return {
+    id: service.id,
+    providerId: service.provider_id,
+    title: service.title,
+    description: service.description,
+    basePrice: service.base_price,
+    priceType: service.price_type,
+    durationMins: service.duration_mins,
+    serviceArea: service.service_area || [],
+    images: service.images || [],
+    status: service.status,
+    createdAt: service.created_at,
+    updatedAt: service.updated_at,
+    provider: {
+      name: provider?.name || 'Provider',
+      email: provider?.email || '',
+      profileImage: provider?.profile_image || '',
+    },
+    serviceTypes: service.provider_service_types?.map((item: any) => item.service_type).filter(Boolean) || [],
+  };
+};
+
 const ensureProviderProfiles = async () => {
   const { data: providerUsers, error: usersError } = await supabaseAdmin
     .from('users')
@@ -147,6 +172,66 @@ export const getPendingProviders = async (req: Request, res: Response): Promise<
     res.json((providers || []).map(mapProvider));
   } catch (err) {
     console.error('Get pending providers error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getServices = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { data: services, error } = await supabaseAdmin
+      .from('provider_services')
+      .select(`
+        *,
+        users!provider_services_provider_id_fkey (
+          name,
+          email,
+          profile_image
+        ),
+        provider_service_types (
+          service_type:service_types (*)
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json((services || []).map(mapService));
+  } catch (err) {
+    console.error('Get admin services error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const approveService = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabaseAdmin
+      .from('provider_services')
+      .update({ status: 'active' })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'Service approved' });
+  } catch (err) {
+    console.error('Approve service error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const rejectService = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabaseAdmin
+      .from('provider_services')
+      .update({ status: 'rejected' })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: 'Service rejected' });
+  } catch (err) {
+    console.error('Reject service error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

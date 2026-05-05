@@ -61,10 +61,27 @@ const mapPublicProvider = (providerProfile: any, services: any[]) => {
   };
 };
 
+const getActiveProviderUserIds = async () => {
+  const { data: providers, error } = await supabaseAdmin
+    .from('providers')
+    .select('user_id')
+    .eq('status', 'active');
+
+  if (error) throw error;
+
+  return (providers || []).map((provider: any) => provider.user_id);
+};
+
 export const getPublicServiceBySlug = async (req: Request, res: Response): Promise<void> => {
   try {
     const slugParam = Array.isArray(req.params.slug) ? req.params.slug[0] : req.params.slug || '';
     const requestedSlug = slugify(slugParam);
+    const activeProviderUserIds = await getActiveProviderUserIds();
+
+    if (!activeProviderUserIds.length) {
+      res.status(404).json({ error: 'Service not found' });
+      return;
+    }
 
     const { data: services, error } = await supabaseAdmin
       .from('provider_services')
@@ -80,6 +97,7 @@ export const getPublicServiceBySlug = async (req: Request, res: Response): Promi
         )
       `)
       .eq('status', 'active')
+      .in('provider_id', activeProviderUserIds)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -106,6 +124,20 @@ export const getPublicServices = async (req: Request, res: Response): Promise<vo
     const cityId = typeof req.query.cityId === 'string' ? req.query.cityId.trim() : '';
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 50);
+    const activeProviderUserIds = await getActiveProviderUserIds();
+
+    if (!activeProviderUserIds.length) {
+      res.json({
+        data: [],
+        pagination: {
+          page: 1,
+          limit,
+          total: 0,
+          totalPages: 1,
+        },
+      });
+      return;
+    }
 
     const { data: services, error } = await supabaseAdmin
       .from('provider_services')
@@ -121,6 +153,7 @@ export const getPublicServices = async (req: Request, res: Response): Promise<vo
         )
       `)
       .eq('status', 'active')
+      .in('provider_id', activeProviderUserIds)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -185,32 +218,6 @@ export const getPublicProviderBySlug = async (req: Request, res: Response): Prom
         slugify(user?.name || '') === requestedSlug
       );
     });
-
-    if (!providerProfile) {
-      const { data: providerUsers, error: usersError } = await supabaseAdmin
-        .from('users')
-        .select('id, name, email, phone, profile_image')
-        .eq('role', 'provider');
-
-      if (usersError) throw usersError;
-
-      const providerUser = (providerUsers || []).find((user: any) => (
-        user.id === slugParam ||
-        slugify(user.name || '') === requestedSlug
-      ));
-
-      if (providerUser) {
-        providerProfile = {
-          id: providerUser.id,
-          user_id: providerUser.id,
-          business_name: providerUser.name,
-          category: 'General',
-          location: '',
-          status: 'active',
-          users: providerUser,
-        };
-      }
-    }
 
     if (!providerProfile) {
       res.status(404).json({ error: 'Provider not found' });

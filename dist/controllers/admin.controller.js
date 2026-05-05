@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectProvider = exports.approveProvider = exports.getPendingProviders = exports.getProviders = exports.getDashboardStats = void 0;
+exports.rejectProvider = exports.approveProvider = exports.rejectService = exports.approveService = exports.getServices = exports.getPendingProviders = exports.getProviders = exports.getDashboardStats = void 0;
 const supabase_1 = require("../config/supabase");
 const mapProvider = (provider) => {
     const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
@@ -17,6 +17,29 @@ const mapProvider = (provider) => {
         phone: user?.phone || '',
         profileImage: user?.profile_image || '',
         isActive: user?.is_active ?? true,
+    };
+};
+const mapService = (service) => {
+    const provider = Array.isArray(service.users) ? service.users[0] : service.users;
+    return {
+        id: service.id,
+        providerId: service.provider_id,
+        title: service.title,
+        description: service.description,
+        basePrice: service.base_price,
+        priceType: service.price_type,
+        durationMins: service.duration_mins,
+        serviceArea: service.service_area || [],
+        images: service.images || [],
+        status: service.status,
+        createdAt: service.created_at,
+        updatedAt: service.updated_at,
+        provider: {
+            name: provider?.name || 'Provider',
+            email: provider?.email || '',
+            profileImage: provider?.profile_image || '',
+        },
+        serviceTypes: service.provider_service_types?.map((item) => item.service_type).filter(Boolean) || [],
     };
 };
 const ensureProviderProfiles = async () => {
@@ -137,6 +160,66 @@ const getPendingProviders = async (req, res) => {
     }
 };
 exports.getPendingProviders = getPendingProviders;
+const getServices = async (req, res) => {
+    try {
+        const { data: services, error } = await supabase_1.supabaseAdmin
+            .from('provider_services')
+            .select(`
+        *,
+        users!provider_services_provider_id_fkey (
+          name,
+          email,
+          profile_image
+        ),
+        provider_service_types (
+          service_type:service_types (*)
+        )
+      `)
+            .order('created_at', { ascending: false });
+        if (error)
+            throw error;
+        res.json((services || []).map(mapService));
+    }
+    catch (err) {
+        console.error('Get admin services error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.getServices = getServices;
+const approveService = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { error } = await supabase_1.supabaseAdmin
+            .from('provider_services')
+            .update({ status: 'active' })
+            .eq('id', id);
+        if (error)
+            throw error;
+        res.json({ success: true, message: 'Service approved' });
+    }
+    catch (err) {
+        console.error('Approve service error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.approveService = approveService;
+const rejectService = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { error } = await supabase_1.supabaseAdmin
+            .from('provider_services')
+            .update({ status: 'rejected' })
+            .eq('id', id);
+        if (error)
+            throw error;
+        res.json({ success: true, message: 'Service rejected' });
+    }
+    catch (err) {
+        console.error('Reject service error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.rejectService = rejectService;
 const approveProvider = async (req, res) => {
     try {
         const { id } = req.params;

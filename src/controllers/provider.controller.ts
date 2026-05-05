@@ -1,6 +1,14 @@
 import { Request, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
 
+const normalizeProviderServiceStatus = (status?: string) => {
+  if (status === 'draft' || status === 'paused') {
+    return status;
+  }
+
+  return 'pending_review';
+};
+
 export const getDashboardStats = async (req: Request, res: Response): Promise<void> => {
   try {
     const providerId = req.user?.id;
@@ -116,7 +124,7 @@ export const createProviderService = async (req: Request, res: Response): Promis
         duration_mins,
         service_area,
         images,
-        status,
+        status: normalizeProviderServiceStatus(status),
       }])
       .select()
       .single();
@@ -185,7 +193,7 @@ export const updateProviderService = async (req: Request, res: Response): Promis
         duration_mins,
         service_area,
         images,
-        status,
+        status: normalizeProviderServiceStatus(status),
       })
       .eq('id', serviceId);
 
