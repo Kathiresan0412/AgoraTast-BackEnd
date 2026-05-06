@@ -9,6 +9,8 @@ exports.adminRoutes.use(auth_middleware_1.authenticate, (0, auth_middleware_1.au
 exports.adminRoutes.get('/dashboard-stats', admin_controller_1.getDashboardStats);
 exports.adminRoutes.get('/services', admin_controller_1.getServices);
 exports.adminRoutes.get('/reviews', admin_controller_1.getReviews);
+exports.adminRoutes.get('/login-history', admin_controller_1.getLoginHistory);
+exports.adminRoutes.get('/activity-logs', admin_controller_1.getActivityLogs);
 exports.adminRoutes.get('/providers', admin_controller_1.getProviders);
 exports.adminRoutes.get('/pending-providers', admin_controller_1.getPendingProviders);
 exports.adminRoutes.post('/services/:id/approve', admin_controller_1.approveService);

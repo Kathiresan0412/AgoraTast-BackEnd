@@ -69,6 +69,67 @@ const mapAdminReview = (review: any) => {
   };
 };
 
+const mapLoginHistory = (entry: any) => {
+  const user = Array.isArray(entry.users) ? entry.users[0] : entry.users;
+
+  return {
+    id: entry.id,
+    userId: entry.user_id,
+    email: entry.email,
+    success: entry.success,
+    failureReason: entry.failure_reason || '',
+    ipAddress: entry.ip_address || '',
+    userAgent: entry.user_agent || '',
+    createdAt: entry.created_at,
+    user: user ? {
+      name: user.name || '',
+      email: user.email || '',
+      role: user.role || '',
+    } : null,
+  };
+};
+
+const mapActivityLog = (entry: any) => {
+  const actor = Array.isArray(entry.actor) ? entry.actor[0] : entry.actor;
+
+  return {
+    id: entry.id,
+    actorId: entry.actor_id,
+    actorName: actor?.name || '',
+    actorEmail: actor?.email || '',
+    actorRole: actor?.role || '',
+    action: entry.action,
+    entityType: entry.entity_type || '',
+    entityId: entry.entity_id || '',
+    metadata: entry.metadata || {},
+    ipAddress: entry.ip_address || '',
+    userAgent: entry.user_agent || '',
+    createdAt: entry.created_at,
+  };
+};
+
+const logAdminActivity = async (
+  req: Request,
+  action: string,
+  entityType: string,
+  entityId: string,
+  metadata: Record<string, unknown> = {}
+) => {
+  const { error } = await supabaseAdmin.from('activity_logs').insert({
+    actor_id: req.user?.id || null,
+    action,
+    entity_type: entityType,
+    entity_id: entityId,
+    metadata,
+    ip_address: req.ip,
+    user_agent: req.get('user-agent') || '',
+  });
+
+  if (error) {
+    console.error('Activity log insert error:', error);
+  }
+};
+
 const ensureProviderProfiles = async () => {
   const { data: providerUsers, error: usersError } = await supabaseAdmin
     .from('users')
@@ -99,6 +160,109 @@ const ensureProviderProfiles = async () => {
   if (missingProviders.length) {
     const { error } = await supabaseAdmin.from('providers').insert(missingProviders);
     if (error) throw error;
+  }
+};
+
+export const getLoginHistory = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const success = typeof req.query.success === 'string' ? req.query.success.trim() : 'all';
+    const from = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    const to = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+
+    let query = supabaseAdmin
+      .from('login_histories')
+      .select(`
+        *,
+        users!login_histories_user_id_fkey (
+          name,
+          email,
+          role
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (search) {
+      const safeSearch = search.replace(/[,%]/g, ' ');
+      query = query.ilike('email', `%${safeSearch}%`);
+    }
+
+    if (success === 'success') {
+      query = query.eq('success', true);
+    }
+
+    if (success === 'failed') {
+      query = query.eq('success', false);
+    }
+
+    if (from) {
+      query = query.gte('created_at', from);
+    }
+
+    if (to) {
+      query = query.lte('created_at', `${to}T23:59:59.999Z`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    res.json((data || []).map(mapLoginHistory));
+  } catch (err) {
+    console.error('Get login history error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getActivityLogs = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    const action = typeof req.query.action === 'string' ? req.query.action.trim() : 'all';
+    const entityType = typeof req.query.entityType === 'string' ? req.query.entityType.trim() : 'all';
+    const from = typeof req.query.from === 'string' ? req.query.from.trim() : '';
+    const to = typeof req.query.to === 'string' ? req.query.to.trim() : '';
+
+    let query = supabaseAdmin
+      .from('activity_logs')
+      .select(`
+        *,
+        actor:users!activity_logs_actor_id_fkey (
+          name,
+          email,
+          role
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (search) {
+      const safeSearch = search.replace(/[,%]/g, ' ');
+      query = query.or(`action.ilike.%${safeSearch}%,entity_type.ilike.%${safeSearch}%`);
+    }
+
+    if (action && action !== 'all') {
+      query = query.eq('action', action);
+    }
+
+    if (entityType && entityType !== 'all') {
+      query = query.eq('entity_type', entityType);
+    }
+
+    if (from) {
+      query = query.gte('created_at', from);
+    }
+
+    if (to) {
+      query = query.lte('created_at', `${to}T23:59:59.999Z`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    res.json((data || []).map(mapActivityLog));
+  } catch (err) {
+    console.error('Get activity logs error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -204,22 +368,49 @@ export const getServices = async (req: Request, res: Response): Promise<void> =>
   try {
     const { data: services, error } = await supabaseAdmin
       .from('provider_services')
-      .select(`
-        *,
-        users!provider_services_provider_id_fkey (
-          name,
-          email,
-          profile_image
-        ),
-        provider_service_types (
-          service_type:service_types (*)
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    res.json((services || []).map(mapService));
+    const serviceRows = services || [];
+    const providerIds = Array.from(new Set(serviceRows.map((service: any) => service.provider_id).filter(Boolean)));
+    const serviceIds = serviceRows.map((service: any) => service.id);
+
+    const { data: providerUsers, error: usersError } = providerIds.length
+      ? await supabaseAdmin
+        .from('users')
+        .select('id, name, email, profile_image')
+        .in('id', providerIds)
+      : { data: [], error: null };
+
+    if (usersError) throw usersError;
+
+    const { data: serviceTypeLinks, error: linksError } = serviceIds.length
+      ? await supabaseAdmin
+        .from('provider_service_types')
+        .select('provider_service_id, service_type:service_types (*)')
+        .in('provider_service_id', serviceIds)
+      : { data: [], error: null };
+
+    if (linksError) throw linksError;
+
+    const providersById = new Map((providerUsers || []).map((provider: any) => [provider.id, provider]));
+    const serviceTypesByServiceId = new Map<string, any[]>();
+
+    (serviceTypeLinks || []).forEach((link: any) => {
+      const currentLinks = serviceTypesByServiceId.get(link.provider_service_id) || [];
+      currentLinks.push({ service_type: link.service_type });
+      serviceTypesByServiceId.set(link.provider_service_id, currentLinks);
+    });
+
+    const hydratedServices = serviceRows.map((service: any) => ({
+      ...service,
+      users: providersById.get(service.provider_id) || null,
+      provider_service_types: serviceTypesByServiceId.get(service.id) || [],
+    }));
+
+    res.json(hydratedServices.map(mapService));
   } catch (err) {
     console.error('Get admin services error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -265,7 +456,7 @@ export const getReviews = async (req: Request, res: Response): Promise<void> => 
 
 export const updateReviewStatus = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { status } = req.body;
 
     if (!['pending', 'visible', 'hidden', 'deleted'].includes(status)) {
@@ -295,6 +486,8 @@ export const updateReviewStatus = async (req: Request, res: Response): Promise<v
 
     if (error) throw error;
 
+    await logAdminActivity(req, 'review_status_updated', 'review', id, { status });
+
     res.json(mapAdminReview(review));
   } catch (err) {
     console.error('Update review status error:', err);
@@ -304,13 +497,15 @@ export const updateReviewStatus = async (req: Request, res: Response): Promise<v
 
 export const approveService = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { error } = await supabaseAdmin
       .from('provider_services')
       .update({ status: 'active' })
       .eq('id', id);
 
     if (error) throw error;
+
+    await logAdminActivity(req, 'service_approved', 'provider_service', id);
 
     res.json({ success: true, message: 'Service approved' });
   } catch (err) {
@@ -321,13 +516,15 @@ export const approveService = async (req: Request, res: Response): Promise<void>
 
 export const rejectService = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { error } = await supabaseAdmin
       .from('provider_services')
       .update({ status: 'rejected' })
       .eq('id', id);
 
     if (error) throw error;
+
+    await logAdminActivity(req, 'service_rejected', 'provider_service', id);
 
     res.json({ success: true, message: 'Service rejected' });
   } catch (err) {
@@ -338,13 +535,14 @@ export const rejectService = async (req: Request, res: Response): Promise<void> 
 
 export const approveProvider = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { error } = await supabaseAdmin
       .from('providers')
       .update({ status: 'active' })
       .eq('id', id);
 
     if (error) throw error;
+    await logAdminActivity(req, 'provider_approved', 'provider', id);
     res.json({ success: true, message: 'Provider approved' });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -353,13 +551,14 @@ export const approveProvider = async (req: Request, res: Response): Promise<void
 
 export const rejectProvider = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id);
     const { error } = await supabaseAdmin
       .from('providers')
       .update({ status: 'rejected' })
       .eq('id', id);
 
     if (error) throw error;
+    await logAdminActivity(req, 'provider_rejected', 'provider', id);
     res.json({ success: true, message: 'Provider rejected' });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
