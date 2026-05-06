@@ -37,6 +37,25 @@ const createProviderProfile = async (userId: string, name: string) =>
       status: 'pending',
     });
 
+const recordLoginHistory = async (
+  req: Request,
+  email: string,
+  userId: string
+) => {
+  const { error } = await supabaseAdmin.from('login_histories').insert({
+    user_id: userId,
+    email,
+    success: true,
+    failure_reason: null,
+    ip_address: req.ip,
+    user_agent: req.get('user-agent') || '',
+  });
+
+  if (error) {
+    console.error('Login history insert error:', error);
+  }
+};
+
 const sendAuthResponse = (res: Response, status: number, token: string, user: any): void => {
   res.status(status).json({
     token,
@@ -152,6 +171,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const user = matchedUsers[0];
     const token = createJwt(user);
+    await recordLoginHistory(req, user.email, user.id);
 
     sendAuthResponse(res, 200, token, user);
   } catch (err) {
@@ -205,6 +225,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
 
     if (existingUser) {
       const token = createJwt(existingUser);
+      await recordLoginHistory(req, existingUser.email, existingUser.id);
       sendAuthResponse(res, 200, token, existingUser);
       return;
     }
@@ -240,6 +261,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
     }
 
     const token = createJwt(newUser);
+    await recordLoginHistory(req, newUser.email, newUser.id);
     sendAuthResponse(res, 201, token, newUser);
   } catch (err) {
     console.error('Google login error:', err);

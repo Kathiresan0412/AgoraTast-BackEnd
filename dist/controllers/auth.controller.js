@@ -21,6 +21,19 @@ const createProviderProfile = async (userId, name) => supabase_1.supabaseAdmin
     location: '',
     status: 'pending',
 });
+const recordLoginHistory = async (req, email, userId) => {
+    const { error } = await supabase_1.supabaseAdmin.from('login_histories').insert({
+        user_id: userId,
+        email,
+        success: true,
+        failure_reason: null,
+        ip_address: req.ip,
+        user_agent: req.get('user-agent') || '',
+    });
+    if (error) {
+        console.error('Login history insert error:', error);
+    }
+};
 const sendAuthResponse = (res, status, token, user) => {
     res.status(status).json({
         token,
@@ -117,6 +130,7 @@ const login = async (req, res) => {
         }
         const user = matchedUsers[0];
         const token = createJwt(user);
+        await recordLoginHistory(req, user.email, user.id);
         sendAuthResponse(res, 200, token, user);
     }
     catch (err) {
@@ -159,6 +173,7 @@ const googleLogin = async (req, res) => {
         }
         if (existingUser) {
             const token = createJwt(existingUser);
+            await recordLoginHistory(req, existingUser.email, existingUser.id);
             sendAuthResponse(res, 200, token, existingUser);
             return;
         }
@@ -188,6 +203,7 @@ const googleLogin = async (req, res) => {
             }
         }
         const token = createJwt(newUser);
+        await recordLoginHistory(req, newUser.email, newUser.id);
         sendAuthResponse(res, 201, token, newUser);
     }
     catch (err) {
