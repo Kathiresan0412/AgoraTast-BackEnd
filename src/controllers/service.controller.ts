@@ -118,6 +118,7 @@ export const getPublicServiceBySlug = async (req: Request, res: Response): Promi
 
 export const getPublicServices = async (req: Request, res: Response): Promise<void> => {
   try {
+    const country = typeof req.query.country === 'string' ? req.query.country.trim().toLowerCase() : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
     const provinceId = typeof req.query.provinceId === 'string' ? req.query.provinceId.trim() : '';
     const districtId = typeof req.query.districtId === 'string' ? req.query.districtId.trim() : '';
@@ -161,12 +162,14 @@ export const getPublicServices = async (req: Request, res: Response): Promise<vo
     const filtered = (services || []).filter((service: any) => {
       const serviceArea = service.service_area || [];
       const serviceTypes = service.provider_service_types?.map((item: any) => item.service_type).filter(Boolean) || [];
+      const hasCountryTag = serviceArea.some((item: string) => item.startsWith('country:'));
+      const countryMatches = !country || serviceArea.includes(`country:${country}`) || !hasCountryTag;
       const categoryMatches = !category || category === 'all' || serviceTypes.some((type: any) => type.name === category);
       const provinceMatches = !provinceId || serviceArea.includes(`province:${provinceId}`);
       const districtMatches = !districtId || serviceArea.includes(`district:${districtId}`);
       const cityMatches = !cityId || serviceArea.includes(`city:${cityId}`);
 
-      return categoryMatches && provinceMatches && districtMatches && cityMatches;
+      return countryMatches && categoryMatches && provinceMatches && districtMatches && cityMatches;
     });
 
     const total = filtered.length;

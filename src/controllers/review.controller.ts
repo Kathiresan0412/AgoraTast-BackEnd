@@ -28,8 +28,8 @@ const mapReview = (review: any, usersById: Map<string, any>) => {
     providerServiceId: review.provider_service_id,
     providerId: review.provider_id,
     customerId: review.customer_id,
-    customerName: customer?.name || 'Customer',
-    customerEmail: customer?.email || '',
+    customerName: customer?.name || review.guest_name || 'Guest customer',
+    customerEmail: customer?.email || review.guest_email || '',
     customerProfileImage: profileImage.startsWith('data:image/') ? '' : profileImage,
     rating: review.rating,
     comment: review.comment || '',
@@ -130,7 +130,7 @@ const fetchMappedReviews = async (query: any, userId?: string) => {
 
   return reviews.map((review: any) => ({
     ...mapReview(review, usersById),
-    isMine: review.customer_id === userId,
+    isMine: Boolean(userId && review.customer_id === userId),
   }));
 };
 
@@ -248,7 +248,7 @@ export const createReview = async (req: Request, res: Response): Promise<void> =
         customer_id: customerId,
         rating,
         comment: comment?.trim() || null,
-        status: 'visible',
+        status: 'pending',
       }])
       .select()
       .single();
@@ -302,6 +302,7 @@ export const updateReview = async (req: Request, res: Response): Promise<void> =
     const updates: Record<string, any> = {};
     if (rating !== undefined) updates.rating = rating;
     if (comment !== undefined) updates.comment = comment.trim() || null;
+    updates.status = 'pending';
 
     const { data: review, error } = await supabaseAdmin
       .from('reviews')

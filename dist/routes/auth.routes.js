@@ -15,7 +15,8 @@ exports.authRoutes.post('/register', [
 ], validate_middleware_1.validateRequest, auth_controller_1.register);
 exports.authRoutes.post('/login', [
     (0, express_validator_1.body)('email').isEmail().withMessage('Valid email is required'),
-    (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required')
+    (0, express_validator_1.body)('password').notEmpty().withMessage('Password is required'),
+    (0, express_validator_1.body)('role').optional().isIn(['customer', 'provider', 'admin']).withMessage('Role must be customer, provider, or admin'),
 ], validate_middleware_1.validateRequest, auth_controller_1.login);
 exports.authRoutes.post('/google', [
     (0, express_validator_1.body)('credential').notEmpty().withMessage('Google credential is required'),
