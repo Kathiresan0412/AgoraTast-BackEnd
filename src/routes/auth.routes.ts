@@ -22,7 +22,8 @@ authRoutes.post(
   '/login',
   [
     body('email').isEmail().withMessage('Valid email is required'),
-    body('password').notEmpty().withMessage('Password is required')
+    body('password').notEmpty().withMessage('Password is required'),
+    body('role').optional().isIn(['customer', 'provider', 'admin']).withMessage('Role must be customer, provider, or admin'),
   ],
   validateRequest,
   login

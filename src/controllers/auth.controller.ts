@@ -57,15 +57,16 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     // Only allow customer/provider self-registration
     const userRole = getSelfRegistrationRole(role);
 
-    // Check if user already exists
+    // Block duplicate accounts only within the same role.
     const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('email', email)
-      .single();
+      .eq('role', userRole)
+      .maybeSingle();
 
     if (existingUser) {
-      res.status(409).json({ error: 'An account with this email already exists' });
+      res.status(409).json({ error: `An ${userRole} account with this email already exists` });
       return;
     }
 
@@ -113,25 +114,43 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
-    const { data: user, error } = await supabaseAdmin
+    const userQuery = supabaseAdmin
       .from('users')
       .select('*')
-      .eq('email', email)
-      .single();
+      .eq('email', email);
 
-    if (error || !user) {
+    if (role) {
+      userQuery.eq('role', role);
+    }
+
+    const { data: users, error } = await userQuery;
+
+    if (error || !users?.length) {
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
 
-    const isMatch = await bcrypt.compare(password, user.password_hash || '');
-    if (!isMatch) {
+    const matchedUsers = [];
+
+    for (const candidate of users) {
+      if (await bcrypt.compare(password, candidate.password_hash || '')) {
+        matchedUsers.push(candidate);
+      }
+    }
+
+    if (matchedUsers.length === 0) {
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
 
+    if (matchedUsers.length > 1) {
+      res.status(409).json({ error: 'Multiple accounts match this email. Please choose a role to continue.' });
+      return;
+    }
+
+    const user = matchedUsers[0];
     const token = createJwt(user);
 
     sendAuthResponse(res, 200, token, user);
@@ -175,6 +194,7 @@ export const googleLogin = async (req: Request, res: Response): Promise<void> =>
       .from('users')
       .select('id, name, email, role, profile_image')
       .eq('email', email)
+      .eq('role', userRole)
       .maybeSingle();
 
     if (existingUserError) {

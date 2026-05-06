@@ -38,14 +38,15 @@ const register = async (req, res) => {
         const { name, email, password, role } = req.body;
         // Only allow customer/provider self-registration
         const userRole = getSelfRegistrationRole(role);
-        // Check if user already exists
+        // Block duplicate accounts only within the same role.
         const { data: existingUser } = await supabase_1.supabaseAdmin
             .from('users')
             .select('id')
             .eq('email', email)
-            .single();
+            .eq('role', userRole)
+            .maybeSingle();
         if (existingUser) {
-            res.status(409).json({ error: 'An account with this email already exists' });
+            res.status(409).json({ error: `An ${userRole} account with this email already exists` });
             return;
         }
         // Hash the password
@@ -87,21 +88,34 @@ const register = async (req, res) => {
 exports.register = register;
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
-        const { data: user, error } = await supabase_1.supabaseAdmin
+        const { email, password, role } = req.body;
+        const userQuery = supabase_1.supabaseAdmin
             .from('users')
             .select('*')
-            .eq('email', email)
-            .single();
-        if (error || !user) {
+            .eq('email', email);
+        if (role) {
+            userQuery.eq('role', role);
+        }
+        const { data: users, error } = await userQuery;
+        if (error || !users?.length) {
             res.status(401).json({ error: 'Invalid email or password' });
             return;
         }
-        const isMatch = await bcryptjs_1.default.compare(password, user.password_hash || '');
-        if (!isMatch) {
+        const matchedUsers = [];
+        for (const candidate of users) {
+            if (await bcryptjs_1.default.compare(password, candidate.password_hash || '')) {
+                matchedUsers.push(candidate);
+            }
+        }
+        if (matchedUsers.length === 0) {
             res.status(401).json({ error: 'Invalid email or password' });
             return;
         }
+        if (matchedUsers.length > 1) {
+            res.status(409).json({ error: 'Multiple accounts match this email. Please choose a role to continue.' });
+            return;
+        }
+        const user = matchedUsers[0];
         const token = createJwt(user);
         sendAuthResponse(res, 200, token, user);
     }
@@ -136,6 +150,7 @@ const googleLogin = async (req, res) => {
             .from('users')
             .select('id, name, email, role, profile_image')
             .eq('email', email)
+            .eq('role', userRole)
             .maybeSingle();
         if (existingUserError) {
             console.error('Google login lookup error:', existingUserError);

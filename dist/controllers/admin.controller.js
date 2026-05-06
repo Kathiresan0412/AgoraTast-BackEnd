@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectProvider = exports.approveProvider = exports.rejectService = exports.approveService = exports.getServices = exports.getPendingProviders = exports.getProviders = exports.getDashboardStats = void 0;
+exports.rejectProvider = exports.approveProvider = exports.rejectService = exports.approveService = exports.updateReviewStatus = exports.getReviews = exports.getServices = exports.getPendingProviders = exports.getProviders = exports.getDashboardStats = void 0;
 const supabase_1 = require("../config/supabase");
 const mapProvider = (provider) => {
     const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
@@ -40,6 +40,28 @@ const mapService = (service) => {
             profileImage: provider?.profile_image || '',
         },
         serviceTypes: service.provider_service_types?.map((item) => item.service_type).filter(Boolean) || [],
+    };
+};
+const mapAdminReview = (review) => {
+    const customer = Array.isArray(review.customer) ? review.customer[0] : review.customer;
+    const provider = Array.isArray(review.provider) ? review.provider[0] : review.provider;
+    const service = Array.isArray(review.provider_services) ? review.provider_services[0] : review.provider_services;
+    return {
+        id: review.id,
+        bookingId: review.booking_id,
+        providerServiceId: review.provider_service_id,
+        providerId: review.provider_id,
+        customerId: review.customer_id,
+        customerName: customer?.name || review.guest_name || 'Guest customer',
+        customerEmail: customer?.email || review.guest_email || '',
+        providerName: provider?.name || 'Provider',
+        providerEmail: provider?.email || '',
+        serviceTitle: service?.title || '',
+        rating: review.rating,
+        comment: review.comment || '',
+        status: review.status,
+        createdAt: review.created_at,
+        updatedAt: review.updated_at,
     };
 };
 const ensureProviderProfiles = async () => {
@@ -186,6 +208,78 @@ const getServices = async (req, res) => {
     }
 };
 exports.getServices = getServices;
+const getReviews = async (req, res) => {
+    try {
+        const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+        let query = supabase_1.supabaseAdmin
+            .from('reviews')
+            .select(`
+        *,
+        customer:users!reviews_customer_id_fkey (
+          name,
+          email
+        ),
+        provider:users!reviews_provider_id_fkey (
+          name,
+          email
+        ),
+        provider_services (
+          title
+        )
+      `)
+            .neq('status', 'deleted')
+            .order('created_at', { ascending: false });
+        if (status && status !== 'all') {
+            query = query.eq('status', status);
+        }
+        const { data: reviews, error } = await query;
+        if (error)
+            throw error;
+        res.json((reviews || []).map(mapAdminReview));
+    }
+    catch (err) {
+        console.error('Get admin reviews error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.getReviews = getReviews;
+const updateReviewStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        if (!['pending', 'visible', 'hidden', 'deleted'].includes(status)) {
+            res.status(400).json({ error: 'Invalid review status' });
+            return;
+        }
+        const { data: review, error } = await supabase_1.supabaseAdmin
+            .from('reviews')
+            .update({ status })
+            .eq('id', id)
+            .select(`
+        *,
+        customer:users!reviews_customer_id_fkey (
+          name,
+          email
+        ),
+        provider:users!reviews_provider_id_fkey (
+          name,
+          email
+        ),
+        provider_services (
+          title
+        )
+      `)
+            .single();
+        if (error)
+            throw error;
+        res.json(mapAdminReview(review));
+    }
+    catch (err) {
+        console.error('Update review status error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+exports.updateReviewStatus = updateReviewStatus;
 const approveService = async (req, res) => {
     try {
         const { id } = req.params;

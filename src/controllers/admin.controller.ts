@@ -45,6 +45,30 @@ const mapService = (service: any) => {
   };
 };
 
+const mapAdminReview = (review: any) => {
+  const customer = Array.isArray(review.customer) ? review.customer[0] : review.customer;
+  const provider = Array.isArray(review.provider) ? review.provider[0] : review.provider;
+  const service = Array.isArray(review.provider_services) ? review.provider_services[0] : review.provider_services;
+
+  return {
+    id: review.id,
+    bookingId: review.booking_id,
+    providerServiceId: review.provider_service_id,
+    providerId: review.provider_id,
+    customerId: review.customer_id,
+    customerName: customer?.name || review.guest_name || 'Guest customer',
+    customerEmail: customer?.email || review.guest_email || '',
+    providerName: provider?.name || 'Provider',
+    providerEmail: provider?.email || '',
+    serviceTitle: service?.title || '',
+    rating: review.rating,
+    comment: review.comment || '',
+    status: review.status,
+    createdAt: review.created_at,
+    updatedAt: review.updated_at,
+  };
+};
+
 const ensureProviderProfiles = async () => {
   const { data: providerUsers, error: usersError } = await supabaseAdmin
     .from('users')
@@ -198,6 +222,82 @@ export const getServices = async (req: Request, res: Response): Promise<void> =>
     res.json((services || []).map(mapService));
   } catch (err) {
     console.error('Get admin services error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getReviews = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+
+    let query = supabaseAdmin
+      .from('reviews')
+      .select(`
+        *,
+        customer:users!reviews_customer_id_fkey (
+          name,
+          email
+        ),
+        provider:users!reviews_provider_id_fkey (
+          name,
+          email
+        ),
+        provider_services (
+          title
+        )
+      `)
+      .neq('status', 'deleted')
+      .order('created_at', { ascending: false });
+
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data: reviews, error } = await query;
+    if (error) throw error;
+
+    res.json((reviews || []).map(mapAdminReview));
+  } catch (err) {
+    console.error('Get admin reviews error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const updateReviewStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'visible', 'hidden', 'deleted'].includes(status)) {
+      res.status(400).json({ error: 'Invalid review status' });
+      return;
+    }
+
+    const { data: review, error } = await supabaseAdmin
+      .from('reviews')
+      .update({ status })
+      .eq('id', id)
+      .select(`
+        *,
+        customer:users!reviews_customer_id_fkey (
+          name,
+          email
+        ),
+        provider:users!reviews_provider_id_fkey (
+          name,
+          email
+        ),
+        provider_services (
+          title
+        )
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.json(mapAdminReview(review));
+  } catch (err) {
+    console.error('Update review status error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
