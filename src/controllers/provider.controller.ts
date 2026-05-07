@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
+import { getRequestLogContext, serializeError, writeApiEvent } from '../config/logger';
 
 const normalizeProviderServiceStatus = (status?: string) => {
   if (status === 'draft' || status === 'paused') {
@@ -7,6 +8,79 @@ const normalizeProviderServiceStatus = (status?: string) => {
   }
 
   return 'pending_review';
+};
+
+const logControllerError = (event: string, req: Request, err: unknown) => {
+  writeApiEvent('error', event, {
+    ...getRequestLogContext(req),
+    error: serializeError(err),
+  });
+};
+
+const isProviderServiceTypesUnavailable = (err: unknown) => {
+  const error = err as { code?: string; message?: string } | null;
+
+  return (
+    error?.code === 'PGRST205' ||
+    error?.code === 'PGRST200' ||
+    Boolean(error?.message?.includes('provider_service_types'))
+  );
+};
+
+const logServiceTypeLinksUnavailable = (event: string, req: Request | undefined, err: unknown) => {
+  writeApiEvent('warn', event, {
+    ...(req ? getRequestLogContext(req) : {}),
+    error: serializeError(err),
+  });
+};
+
+const hydrateServiceTypes = async (services: any[], req?: Request) => {
+  const serviceIds = services.map(service => service.id).filter(Boolean);
+  if (!serviceIds.length) return services;
+
+  const { data: links, error: linksError } = await supabaseAdmin
+    .from('provider_service_types')
+    .select('provider_service_id, service_type_id')
+    .in('provider_service_id', serviceIds);
+
+  if (linksError) {
+    if (isProviderServiceTypesUnavailable(linksError)) {
+      logServiceTypeLinksUnavailable('provider_service_type_links_unavailable', req, linksError);
+      return services.map((service: any) => ({
+        ...service,
+        service_types: [],
+      }));
+    }
+
+    throw linksError;
+  }
+
+  const serviceTypeIds = Array.from(new Set((links || []).map((link: any) => link.service_type_id).filter(Boolean)));
+  const { data: serviceTypes, error: serviceTypesError } = serviceTypeIds.length
+    ? await supabaseAdmin
+      .from('service_types')
+      .select('*')
+      .in('id', serviceTypeIds)
+    : { data: [], error: null };
+
+  if (serviceTypesError) throw serviceTypesError;
+
+  const serviceTypesById = new Map((serviceTypes || []).map((serviceType: any) => [serviceType.id, serviceType]));
+  const serviceTypesByServiceId = new Map<string, any[]>();
+
+  (links || []).forEach((link: any) => {
+    const serviceType = serviceTypesById.get(link.service_type_id);
+    if (!serviceType) return;
+
+    const current = serviceTypesByServiceId.get(link.provider_service_id) || [];
+    current.push(serviceType);
+    serviceTypesByServiceId.set(link.provider_service_id, current);
+  });
+
+  return services.map((service: any) => ({
+    ...service,
+    service_types: serviceTypesByServiceId.get(service.id) || [],
+  }));
 };
 
 export const getDashboardStats = async (req: Request, res: Response): Promise<void> => {
@@ -20,6 +94,7 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
       overallRating: 4.8
     });
   } catch (err) {
+    logControllerError('get_dashboard_stats_failed', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -45,6 +120,7 @@ export const getBookingRequests = async (req: Request, res: Response): Promise<v
 
     res.json(formatted);
   } catch (err) {
+    logControllerError('get_booking_requests_failed', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -54,46 +130,30 @@ export const getProviderServices = async (req: Request, res: Response): Promise<
     const providerId = req.user?.id;
     const { data: services, error } = await supabaseAdmin
       .from('provider_services')
-      .select(`
-        *,
-        provider_service_types (
-          service_type:service_types (*)
-        )
-      `)
+      .select('*')
       .eq('provider_id', providerId)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    const formatted = (services || []).map((service: any) => ({
-      ...service,
-      service_types: service.provider_service_types?.map((item: any) => item.service_type) || [],
-    }));
-
-    res.json(formatted);
+    res.json(await hydrateServiceTypes(services || [], req));
   } catch (err) {
+    logControllerError('get_provider_services_failed', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-const fetchProviderService = async (serviceId: string) => {
+const fetchProviderService = async (serviceId: string, req?: Request) => {
   const { data, error } = await supabaseAdmin
     .from('provider_services')
-    .select(`
-      *,
-      provider_service_types (
-        service_type:service_types (*)
-      )
-    `)
+    .select('*')
     .eq('id', serviceId)
     .single();
 
   if (error) throw error;
 
-  return {
-    ...data,
-    service_types: data.provider_service_types?.map((item: any) => item.service_type) || [],
-  };
+  const [service] = await hydrateServiceTypes([data], req);
+  return service;
 };
 
 export const createProviderService = async (req: Request, res: Response): Promise<void> => {
@@ -141,13 +201,54 @@ export const createProviderService = async (req: Request, res: Response): Promis
       .insert(typeRows);
 
     if (typesError) {
+      if (isProviderServiceTypesUnavailable(typesError)) {
+        logServiceTypeLinksUnavailable('provider_service_type_links_create_skipped', req, typesError);
+        res.status(201).json({ ...service, service_types: [] });
+        return;
+      }
+
       await supabaseAdmin.from('provider_services').delete().eq('id', service.id);
       throw typesError;
     }
 
-    res.status(201).json(await fetchProviderService(service.id));
+    res.status(201).json(await fetchProviderService(service.id, req));
   } catch (err) {
+    logControllerError('create_provider_service_failed', req, err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const replaceProviderServiceTypes = async (serviceId: string, serviceTypeIds: string[], req: Request) => {
+  const { error: deleteTypesError } = await supabaseAdmin
+    .from('provider_service_types')
+    .delete()
+    .eq('provider_service_id', serviceId);
+
+  if (deleteTypesError) {
+    if (isProviderServiceTypesUnavailable(deleteTypesError)) {
+      logServiceTypeLinksUnavailable('provider_service_type_links_update_skipped', req, deleteTypesError);
+      return;
+    }
+
+    throw deleteTypesError;
+  }
+
+  const typeRows = serviceTypeIds.map(serviceTypeId => ({
+    provider_service_id: serviceId,
+    service_type_id: serviceTypeId,
+  }));
+
+  const { error: typesError } = await supabaseAdmin
+    .from('provider_service_types')
+    .insert(typeRows);
+
+  if (typesError) {
+    if (isProviderServiceTypesUnavailable(typesError)) {
+      logServiceTypeLinksUnavailable('provider_service_type_links_update_skipped', req, typesError);
+      return;
+    }
+
+    throw typesError;
   }
 };
 
@@ -200,27 +301,11 @@ export const updateProviderService = async (req: Request, res: Response): Promis
     if (updateError) throw updateError;
 
     const uniqueTypeIds = [...new Set(service_type_ids as string[])];
+    await replaceProviderServiceTypes(serviceId, uniqueTypeIds, req);
 
-    const { error: deleteTypesError } = await supabaseAdmin
-      .from('provider_service_types')
-      .delete()
-      .eq('provider_service_id', serviceId);
-
-    if (deleteTypesError) throw deleteTypesError;
-
-    const typeRows = uniqueTypeIds.map(serviceTypeId => ({
-      provider_service_id: serviceId,
-      service_type_id: serviceTypeId,
-    }));
-
-    const { error: typesError } = await supabaseAdmin
-      .from('provider_service_types')
-      .insert(typeRows);
-
-    if (typesError) throw typesError;
-
-    res.json(await fetchProviderService(serviceId));
+    res.json(await fetchProviderService(serviceId, req));
   } catch (err) {
+    logControllerError('update_provider_service_failed', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -255,6 +340,7 @@ export const deleteProviderService = async (req: Request, res: Response): Promis
 
     res.json({ success: true });
   } catch (err) {
+    logControllerError('delete_provider_service_failed', req, err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
