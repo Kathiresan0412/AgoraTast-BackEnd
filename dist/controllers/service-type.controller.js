@@ -21,10 +21,10 @@ const getServiceTypes = async (req, res) => {
 exports.getServiceTypes = getServiceTypes;
 const createServiceType = async (req, res) => {
     try {
-        const { parent_id, slug, name, description, icon, color, active, sort_order } = req.body;
+        const { parent_id, slug, name, description, icon, image_url, color, active, sort_order } = req.body;
         const { data, error } = await supabase_1.supabaseAdmin
             .from('service_types')
-            .insert([{ parent_id: parent_id || null, slug, name, description, icon, color, active, sort_order }])
+            .insert([{ parent_id: parent_id || null, slug, name, description, icon, image_url: image_url || null, color, active, sort_order }])
             .select()
             .single();
         if (error)
@@ -39,7 +39,7 @@ exports.createServiceType = createServiceType;
 const updateServiceType = async (req, res) => {
     try {
         const { id } = req.params;
-        const { parent_id, slug, name, description, icon, color, sort_order } = req.body;
+        const { parent_id, slug, name, description, icon, image_url, color, sort_order } = req.body;
         const updates = {};
         if ('parent_id' in req.body)
             updates.parent_id = parent_id || null;
@@ -51,6 +51,8 @@ const updateServiceType = async (req, res) => {
             updates.description = description;
         if ('icon' in req.body)
             updates.icon = icon;
+        if ('image_url' in req.body)
+            updates.image_url = image_url || null;
         if ('color' in req.body)
             updates.color = color;
         if ('sort_order' in req.body)
