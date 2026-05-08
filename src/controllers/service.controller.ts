@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
+import { getRequestLogContext, serializeError, writeApiEvent } from '../config/logger';
 
 const slugify = (value: string) =>
   value
@@ -61,6 +62,23 @@ const mapPublicProvider = (providerProfile: any, services: any[]) => {
   };
 };
 
+const isProviderServiceTypesUnavailable = (err: unknown) => {
+  const error = err as { code?: string; message?: string } | null;
+
+  return (
+    error?.code === 'PGRST205' ||
+    error?.code === 'PGRST200' ||
+    Boolean(error?.message?.includes('provider_service_types'))
+  );
+};
+
+const logServiceTypeLinksUnavailable = (req: Request, err: unknown) => {
+  writeApiEvent('warn', 'public_service_type_links_unavailable', {
+    ...getRequestLogContext(req),
+    error: serializeError(err),
+  });
+};
+
 const getActiveProviderUserIds = async () => {
   const { data: providers, error } = await supabaseAdmin
     .from('providers')
@@ -70,6 +88,51 @@ const getActiveProviderUserIds = async () => {
   if (error) throw error;
 
   return (providers || []).map((provider: any) => provider.user_id);
+};
+
+const hydratePublicServices = async (services: any[], req: Request) => {
+  const serviceRows = services || [];
+  const providerIds = Array.from(new Set(serviceRows.map((service: any) => service.provider_id).filter(Boolean)));
+  const serviceIds = serviceRows.map((service: any) => service.id).filter(Boolean);
+
+  const { data: providerUsers, error: usersError } = providerIds.length
+    ? await supabaseAdmin
+      .from('users')
+      .select('id, name, email, profile_image')
+      .in('id', providerIds)
+    : { data: [], error: null };
+
+  if (usersError) throw usersError;
+
+  const { data: serviceTypeLinks, error: linksError } = serviceIds.length
+    ? await supabaseAdmin
+      .from('provider_service_types')
+      .select('provider_service_id, service_type:service_types (*)')
+      .in('provider_service_id', serviceIds)
+    : { data: [], error: null };
+
+  if (linksError && !isProviderServiceTypesUnavailable(linksError)) {
+    throw linksError;
+  }
+
+  if (linksError) {
+    logServiceTypeLinksUnavailable(req, linksError);
+  }
+
+  const providersById = new Map((providerUsers || []).map((provider: any) => [provider.id, provider]));
+  const serviceTypesByServiceId = new Map<string, any[]>();
+
+  (serviceTypeLinks || []).forEach((link: any) => {
+    const currentLinks = serviceTypesByServiceId.get(link.provider_service_id) || [];
+    currentLinks.push({ service_type: link.service_type });
+    serviceTypesByServiceId.set(link.provider_service_id, currentLinks);
+  });
+
+  return serviceRows.map((service: any) => ({
+    ...service,
+    users: providersById.get(service.provider_id) || null,
+    provider_service_types: serviceTypesByServiceId.get(service.id) || [],
+  }));
 };
 
 export const getPublicServiceBySlug = async (req: Request, res: Response): Promise<void> => {
@@ -85,24 +148,15 @@ export const getPublicServiceBySlug = async (req: Request, res: Response): Promi
 
     const { data: services, error } = await supabaseAdmin
       .from('provider_services')
-      .select(`
-        *,
-        users!provider_services_provider_id_fkey (
-          name,
-          email,
-          profile_image
-        ),
-        provider_service_types (
-          service_type:service_types (*)
-        )
-      `)
+      .select('*')
       .eq('status', 'active')
       .in('provider_id', activeProviderUserIds)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    const service = (services || []).find((item: any) => slugify(item.title || '') === requestedSlug || item.id === slugParam);
+    const hydratedServices = await hydratePublicServices(services || [], req);
+    const service = hydratedServices.find((item: any) => slugify(item.title || '') === requestedSlug || item.id === slugParam);
 
     if (!service) {
       res.status(404).json({ error: 'Service not found' });
@@ -142,24 +196,15 @@ export const getPublicServices = async (req: Request, res: Response): Promise<vo
 
     const { data: services, error } = await supabaseAdmin
       .from('provider_services')
-      .select(`
-        *,
-        users!provider_services_provider_id_fkey (
-          name,
-          email,
-          profile_image
-        ),
-        provider_service_types (
-          service_type:service_types (*)
-        )
-      `)
+      .select('*')
       .eq('status', 'active')
       .in('provider_id', activeProviderUserIds)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    const filtered = (services || []).filter((service: any) => {
+    const hydratedServices = await hydratePublicServices(services || [], req);
+    const filtered = hydratedServices.filter((service: any) => {
       const serviceArea = service.service_area || [];
       const serviceTypes = service.provider_service_types?.map((item: any) => item.service_type).filter(Boolean) || [];
       const hasCountryTag = serviceArea.some((item: string) => item.startsWith('country:'));
@@ -229,24 +274,15 @@ export const getPublicProviderBySlug = async (req: Request, res: Response): Prom
 
     const { data: services, error: servicesError } = await supabaseAdmin
       .from('provider_services')
-      .select(`
-        *,
-        users!provider_services_provider_id_fkey (
-          name,
-          email,
-          profile_image
-        ),
-        provider_service_types (
-          service_type:service_types (*)
-        )
-      `)
+      .select('*')
       .eq('provider_id', providerProfile.user_id)
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
     if (servicesError) throw servicesError;
 
-    res.json(mapPublicProvider(providerProfile, services || []));
+    const hydratedServices = await hydratePublicServices(services || [], req);
+    res.json(mapPublicProvider(providerProfile, hydratedServices));
   } catch (err) {
     console.error('Get public provider error:', err);
     res.status(500).json({ error: 'Internal server error' });
