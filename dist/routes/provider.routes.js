@@ -6,6 +6,7 @@ const express_validator_1 = require("express-validator");
 const provider_controller_1 = require("../controllers/provider.controller");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const validate_middleware_1 = require("../middleware/validate.middleware");
+const image_validation_1 = require("../utils/image-validation");
 exports.providerRoutes = (0, express_1.Router)();
 exports.providerRoutes.use(auth_middleware_1.authenticate, (0, auth_middleware_1.authorize)(['provider']));
 exports.providerRoutes.get('/dashboard-stats', provider_controller_1.getDashboardStats);
@@ -19,6 +20,7 @@ const serviceBodyValidation = [
     (0, express_validator_1.body)('duration_mins').optional({ nullable: true }).isInt({ min: 1 }),
     (0, express_validator_1.body)('service_area').optional().isArray(),
     (0, express_validator_1.body)('images').optional().isArray(),
+    (0, express_validator_1.body)('images.*').optional().custom(image_validation_1.isAllowedImageValue).withMessage('Service images must be valid image URLs or image uploads under 2MB'),
     (0, express_validator_1.body)('status').optional().isIn(['draft', 'active', 'paused', 'pending_review', 'rejected']),
     (0, express_validator_1.body)('service_type_ids').isArray({ min: 1 }).withMessage('Select at least one service type'),
     (0, express_validator_1.body)('service_type_ids.*').isUUID().withMessage('Service type ids must be valid UUIDs'),

@@ -1,6 +1,16 @@
 import { Router } from 'express';
 import { body, param, query } from 'express-validator';
-import { createReview, deleteReview, getMyReview, listReviews, updateReview } from '../controllers/review.controller';
+import {
+  createReview,
+  createSystemReview,
+  deleteReview,
+  getMyReview,
+  getMySystemReview,
+  listProviderServiceReviews,
+  listReviews,
+  listSystemReviews,
+  updateReview,
+} from '../controllers/review.controller';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
 
@@ -37,11 +47,15 @@ const updateBodyValidation = [
 ];
 
 reviewRoutes.get('/', optionalAuthenticate, targetQueryValidation, validateRequest, listReviews);
+reviewRoutes.get('/system', optionalAuthenticate, listSystemReviews);
+reviewRoutes.get('/system/my', authenticate, getMySystemReview);
 reviewRoutes.get('/my', authenticate, targetQueryValidation, validateRequest, getMyReview);
+reviewRoutes.get('/providers/:providerId/services', optionalAuthenticate, [param('providerId').isUUID()], validateRequest, listProviderServiceReviews);
 reviewRoutes.get('/providers/:providerId', optionalAuthenticate, [param('providerId').isUUID()], validateRequest, listReviews);
 reviewRoutes.get('/services/:serviceId', optionalAuthenticate, [param('serviceId').isUUID()], validateRequest, listReviews);
 
 reviewRoutes.post('/', authenticate, reviewBodyValidation, validateRequest, createReview);
+reviewRoutes.post('/system', authenticate, reviewBodyValidation, validateRequest, createSystemReview);
 reviewRoutes.post('/providers/:providerId', authenticate, [param('providerId').isUUID(), ...reviewBodyValidation], validateRequest, createReview);
 reviewRoutes.post('/services/:serviceId', authenticate, [param('serviceId').isUUID(), ...reviewBodyValidation], validateRequest, createReview);
 

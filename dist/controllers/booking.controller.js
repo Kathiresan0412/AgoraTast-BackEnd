@@ -44,10 +44,7 @@ const createBooking = async (req, res) => {
             .select(`
         id,
         provider_id,
-        base_price,
-        provider_service_types (
-          service_type_id
-        )
+        base_price
       `)
             .eq('id', targetServiceId)
             .eq('status', 'active')
@@ -56,6 +53,11 @@ const createBooking = async (req, res) => {
             res.status(404).json({ error: 'Service not found or unavailable' });
             return;
         }
+        const { data: serviceTypeLinks } = await supabase_1.supabaseAdmin
+            .from('provider_service_types')
+            .select('service_type_id')
+            .eq('provider_service_id', service.id)
+            .limit(1);
         if (service.provider_id === customerId) {
             res.status(400).json({ error: 'You cannot book your own service' });
             return;
@@ -65,7 +67,7 @@ const createBooking = async (req, res) => {
             .select('name')
             .eq('id', customerId)
             .single();
-        const serviceType = service.provider_service_types?.[0]?.service_type_id || null;
+        const serviceType = serviceTypeLinks?.[0]?.service_type_id || null;
         const { data: booking, error } = await supabase_1.supabaseAdmin
             .from('bookings')
             .insert([{

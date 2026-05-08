@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import { getServiceTypes, createServiceType, updateServiceType, toggleServiceTypeStatus, deleteServiceType } from '../controllers/service-type.controller';
 import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validate.middleware';
+import { isAllowedImageValue } from '../utils/image-validation';
 
 export const serviceTypeRoutes = Router();
 
@@ -20,6 +21,7 @@ serviceTypeRoutes.post(
     body('slug').optional().isString(),
     body('description').optional().isString(),
     body('icon').optional().isString(),
+    body('image_url').optional({ nullable: true }).custom(isAllowedImageValue).withMessage('Service type image must be a valid image URL or image upload under 2MB'),
     body('color').optional().isString(),
     body('active').optional().isBoolean(),
     body('sort_order').optional().isInt()
@@ -38,6 +40,7 @@ serviceTypeRoutes.put(
     body('name').optional().isString(),
     body('description').optional().isString(),
     body('icon').optional().isString(),
+    body('image_url').optional({ nullable: true }).custom(isAllowedImageValue).withMessage('Service type image must be a valid image URL or image upload under 2MB'),
     body('color').optional().isString(),
     body('sort_order').optional().isInt()
   ],
