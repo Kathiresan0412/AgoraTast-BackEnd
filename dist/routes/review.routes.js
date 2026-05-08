@@ -35,10 +35,13 @@ const updateBodyValidation = [
     }),
 ];
 exports.reviewRoutes.get('/', auth_middleware_1.optionalAuthenticate, targetQueryValidation, validate_middleware_1.validateRequest, review_controller_1.listReviews);
+exports.reviewRoutes.get('/system', auth_middleware_1.optionalAuthenticate, review_controller_1.listSystemReviews);
+exports.reviewRoutes.get('/system/my', auth_middleware_1.authenticate, review_controller_1.getMySystemReview);
 exports.reviewRoutes.get('/my', auth_middleware_1.authenticate, targetQueryValidation, validate_middleware_1.validateRequest, review_controller_1.getMyReview);
 exports.reviewRoutes.get('/providers/:providerId', auth_middleware_1.optionalAuthenticate, [(0, express_validator_1.param)('providerId').isUUID()], validate_middleware_1.validateRequest, review_controller_1.listReviews);
 exports.reviewRoutes.get('/services/:serviceId', auth_middleware_1.optionalAuthenticate, [(0, express_validator_1.param)('serviceId').isUUID()], validate_middleware_1.validateRequest, review_controller_1.listReviews);
 exports.reviewRoutes.post('/', auth_middleware_1.authenticate, reviewBodyValidation, validate_middleware_1.validateRequest, review_controller_1.createReview);
+exports.reviewRoutes.post('/system', auth_middleware_1.authenticate, reviewBodyValidation, validate_middleware_1.validateRequest, review_controller_1.createSystemReview);
 exports.reviewRoutes.post('/providers/:providerId', auth_middleware_1.authenticate, [(0, express_validator_1.param)('providerId').isUUID(), ...reviewBodyValidation], validate_middleware_1.validateRequest, review_controller_1.createReview);
 exports.reviewRoutes.post('/services/:serviceId', auth_middleware_1.authenticate, [(0, express_validator_1.param)('serviceId').isUUID(), ...reviewBodyValidation], validate_middleware_1.validateRequest, review_controller_1.createReview);
 exports.reviewRoutes.put('/:reviewId', auth_middleware_1.authenticate, [(0, express_validator_1.param)('reviewId').isUUID(), ...updateBodyValidation], validate_middleware_1.validateRequest, review_controller_1.updateReview);
