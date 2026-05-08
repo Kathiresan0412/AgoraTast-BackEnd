@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.rejectProvider = exports.approveProvider = exports.rejectService = exports.approveService = exports.updateReviewStatus = exports.getReviews = exports.getServices = exports.getPendingProviders = exports.getProviders = exports.getDashboardStats = exports.getActivityLogs = exports.getLoginHistory = void 0;
 const supabase_1 = require("../config/supabase");
+const logger_1 = require("../config/logger");
 const mapProvider = (provider) => {
     const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
     return {
@@ -98,6 +99,12 @@ const mapActivityLog = (entry) => {
         userAgent: entry.user_agent || '',
         createdAt: entry.created_at,
     };
+};
+const isProviderServiceTypesUnavailable = (err) => {
+    const error = err;
+    return (error?.code === 'PGRST205' ||
+        error?.code === 'PGRST200' ||
+        Boolean(error?.message?.includes('provider_service_types')));
 };
 const logAdminActivity = async (req, action, entityType, entityId, metadata = {}) => {
     const { error } = await supabase_1.supabaseAdmin.from('activity_logs').insert({
@@ -347,8 +354,15 @@ const getServices = async (req, res) => {
                 .select('provider_service_id, service_type:service_types (*)')
                 .in('provider_service_id', serviceIds)
             : { data: [], error: null };
-        if (linksError)
+        if (linksError && !isProviderServiceTypesUnavailable(linksError)) {
             throw linksError;
+        }
+        if (linksError) {
+            (0, logger_1.writeApiEvent)('warn', 'admin_service_type_links_unavailable', {
+                ...(0, logger_1.getRequestLogContext)(req),
+                error: (0, logger_1.serializeError)(linksError),
+            });
+        }
         const providersById = new Map((providerUsers || []).map((provider) => [provider.id, provider]));
         const serviceTypesByServiceId = new Map();
         (serviceTypeLinks || []).forEach((link) => {

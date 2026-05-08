@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
+import { getRequestLogContext, serializeError, writeApiEvent } from '../config/logger';
 
 const mapProvider = (provider: any) => {
   const user = Array.isArray(provider.users) ? provider.users[0] : provider.users;
@@ -106,6 +107,16 @@ const mapActivityLog = (entry: any) => {
     userAgent: entry.user_agent || '',
     createdAt: entry.created_at,
   };
+};
+
+const isProviderServiceTypesUnavailable = (err: unknown) => {
+  const error = err as { code?: string; message?: string } | null;
+
+  return (
+    error?.code === 'PGRST205' ||
+    error?.code === 'PGRST200' ||
+    Boolean(error?.message?.includes('provider_service_types'))
+  );
 };
 
 const logAdminActivity = async (
@@ -393,7 +404,16 @@ export const getServices = async (req: Request, res: Response): Promise<void> =>
         .in('provider_service_id', serviceIds)
       : { data: [], error: null };
 
-    if (linksError) throw linksError;
+    if (linksError && !isProviderServiceTypesUnavailable(linksError)) {
+      throw linksError;
+    }
+
+    if (linksError) {
+      writeApiEvent('warn', 'admin_service_type_links_unavailable', {
+        ...getRequestLogContext(req),
+        error: serializeError(linksError),
+      });
+    }
 
     const providersById = new Map((providerUsers || []).map((provider: any) => [provider.id, provider]));
     const serviceTypesByServiceId = new Map<string, any[]>();
