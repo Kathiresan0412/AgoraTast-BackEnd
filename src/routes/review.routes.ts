@@ -6,6 +6,7 @@ import {
   deleteReview,
   getMyReview,
   getMySystemReview,
+  listProviderServiceReviews,
   listReviews,
   listSystemReviews,
   updateReview,
@@ -49,6 +50,7 @@ reviewRoutes.get('/', optionalAuthenticate, targetQueryValidation, validateReque
 reviewRoutes.get('/system', optionalAuthenticate, listSystemReviews);
 reviewRoutes.get('/system/my', authenticate, getMySystemReview);
 reviewRoutes.get('/my', authenticate, targetQueryValidation, validateRequest, getMyReview);
+reviewRoutes.get('/providers/:providerId/services', optionalAuthenticate, [param('providerId').isUUID()], validateRequest, listProviderServiceReviews);
 reviewRoutes.get('/providers/:providerId', optionalAuthenticate, [param('providerId').isUUID()], validateRequest, listReviews);
 reviewRoutes.get('/services/:serviceId', optionalAuthenticate, [param('serviceId').isUUID()], validateRequest, listReviews);
 

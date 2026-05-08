@@ -19,10 +19,10 @@ export const getServiceTypes = async (req: Request, res: Response): Promise<void
 
 export const createServiceType = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { parent_id, slug, name, description, icon, color, active, sort_order } = req.body;
+    const { parent_id, slug, name, description, icon, image_url, color, active, sort_order } = req.body;
     const { data, error } = await supabaseAdmin
       .from('service_types')
-      .insert([{ parent_id: parent_id || null, slug, name, description, icon, color, active, sort_order }])
+      .insert([{ parent_id: parent_id || null, slug, name, description, icon, image_url: image_url || null, color, active, sort_order }])
       .select()
       .single();
 
@@ -36,7 +36,7 @@ export const createServiceType = async (req: Request, res: Response): Promise<vo
 export const updateServiceType = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { parent_id, slug, name, description, icon, color, sort_order } = req.body;
+    const { parent_id, slug, name, description, icon, image_url, color, sort_order } = req.body;
     const updates: Record<string, unknown> = {};
 
     if ('parent_id' in req.body) updates.parent_id = parent_id || null;
@@ -44,6 +44,7 @@ export const updateServiceType = async (req: Request, res: Response): Promise<vo
     if ('name' in req.body) updates.name = name;
     if ('description' in req.body) updates.description = description;
     if ('icon' in req.body) updates.icon = icon;
+    if ('image_url' in req.body) updates.image_url = image_url || null;
     if ('color' in req.body) updates.color = color;
     if ('sort_order' in req.body) updates.sort_order = sort_order;
 

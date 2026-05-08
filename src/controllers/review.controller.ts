@@ -183,6 +183,49 @@ export const listReviews = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
+export const listProviderServiceReviews = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { providerId } = req.params;
+
+    const { data, error } = await supabaseAdmin
+      .from('reviews')
+      .select('*')
+      .eq('is_for_system', false)
+      .eq('status', 'visible')
+      .eq('provider_id', providerId)
+      .not('provider_service_id', 'is', null)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const reviews = data || [];
+    const usersById = await getUsersByIds(reviews.map((review: any) => review.customer_id));
+    const serviceIds = Array.from(new Set(reviews.map((review: any) => review.provider_service_id).filter(Boolean)));
+    const { data: services, error: servicesError } = serviceIds.length
+      ? await supabaseAdmin
+        .from('provider_services')
+        .select('id, title')
+        .eq('provider_id', providerId)
+        .in('id', serviceIds)
+      : { data: [], error: null };
+
+    if (servicesError) throw servicesError;
+
+    const servicesById = new Map((services || []).map((service: any) => [service.id, service]));
+
+    res.json(reviews
+      .filter((review: any) => servicesById.has(review.provider_service_id))
+      .map((review: any) => ({
+        ...mapReview(review, usersById),
+        serviceTitle: servicesById.get(review.provider_service_id)?.title || 'Service',
+        isMine: Boolean(req.user?.id && review.customer_id === req.user.id),
+      })));
+  } catch (err) {
+    logControllerError('list_provider_service_reviews_error', req, err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const listSystemReviews = async (req: Request, res: Response): Promise<void> => {
   try {
     const { data, error } = await supabaseAdmin

@@ -38,6 +38,7 @@ exports.reviewRoutes.get('/', auth_middleware_1.optionalAuthenticate, targetQuer
 exports.reviewRoutes.get('/system', auth_middleware_1.optionalAuthenticate, review_controller_1.listSystemReviews);
 exports.reviewRoutes.get('/system/my', auth_middleware_1.authenticate, review_controller_1.getMySystemReview);
 exports.reviewRoutes.get('/my', auth_middleware_1.authenticate, targetQueryValidation, validate_middleware_1.validateRequest, review_controller_1.getMyReview);
+exports.reviewRoutes.get('/providers/:providerId/services', auth_middleware_1.optionalAuthenticate, [(0, express_validator_1.param)('providerId').isUUID()], validate_middleware_1.validateRequest, review_controller_1.listProviderServiceReviews);
 exports.reviewRoutes.get('/providers/:providerId', auth_middleware_1.optionalAuthenticate, [(0, express_validator_1.param)('providerId').isUUID()], validate_middleware_1.validateRequest, review_controller_1.listReviews);
 exports.reviewRoutes.get('/services/:serviceId', auth_middleware_1.optionalAuthenticate, [(0, express_validator_1.param)('serviceId').isUUID()], validate_middleware_1.validateRequest, review_controller_1.listReviews);
 exports.reviewRoutes.post('/', auth_middleware_1.authenticate, reviewBodyValidation, validate_middleware_1.validateRequest, review_controller_1.createReview);

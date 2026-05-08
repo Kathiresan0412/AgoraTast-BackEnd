@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import { updateProfile, updatePassword } from '../controllers/user.controller';
 import { validateRequest } from '../middleware/validate.middleware';
 import { authenticate } from '../middleware/auth.middleware';
+import { isAllowedImageValue } from '../utils/image-validation';
 
 export const userRoutes = Router();
 
@@ -11,7 +12,7 @@ userRoutes.put(
   authenticate,
   [
     body('name').optional().isString(),
-    body('profileImage').optional().isString()
+    body('profileImage').optional().custom(isAllowedImageValue).withMessage('Profile image must be a valid image URL or image upload under 2MB')
   ],
   validateRequest,
   updateProfile
