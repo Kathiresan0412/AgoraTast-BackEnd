@@ -21,13 +21,25 @@ import { apiLogStream, getRequestLogContext, serializeError, writeApiEvent } fro
 
 const app = express();
 
- const allowedOrigins = [
-  ...(process.env.FRONTEND_URL || 'http://localhost:3000')
-    .split(',')
-    .map(origin => origin.trim())
-    .filter(Boolean),
+const configuredFrontendOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const localFrontendOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://192.168.8.100:3000',
+  'http://192.168.8.100:3001',
   'http://192.168.8.101:3000',
- ];
+  'http://192.168.8.101:3001',
+];
+
+const allowedOrigins = Array.from(
+  new Set([...configuredFrontendOrigins, ...localFrontendOrigins])
+);
 
 const apiOverview = {
   name: 'AgoraTask API',
