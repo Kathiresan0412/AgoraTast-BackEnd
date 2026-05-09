@@ -26,6 +26,13 @@ const configuredFrontendOrigins = (process.env.FRONTEND_URL || 'http://localhost
   .map(origin => origin.trim())
   .filter(Boolean);
 
+const originToPattern = (origin: string) => {
+  if (!origin.includes('*')) return null;
+
+  const escaped = origin.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`);
+};
+
 const localFrontendOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
@@ -37,9 +44,32 @@ const localFrontendOrigins = [
   'http://192.168.8.101:3001',
 ];
 
-const allowedOrigins = Array.from(
-  new Set([...configuredFrontendOrigins, ...localFrontendOrigins])
-);
+const configuredExactOrigins = configuredFrontendOrigins.filter(origin => !origin.includes('*'));
+const configuredOriginPatterns = configuredFrontendOrigins
+  .map(originToPattern)
+  .filter((pattern): pattern is RegExp => Boolean(pattern));
+
+const allowedOrigins = Array.from(new Set([
+  ...configuredExactOrigins,
+  ...(process.env.NODE_ENV === 'production' ? [] : localFrontendOrigins),
+]));
+
+const corsOrigin: cors.CorsOptions['origin'] = (origin, callback) => {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+
+  if (
+    allowedOrigins.includes(origin) ||
+    configuredOriginPatterns.some(pattern => pattern.test(origin))
+  ) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error(`CORS blocked origin: ${origin}`));
+};
 
 const apiOverview = {
   name: 'AgoraTask API',
@@ -82,7 +112,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(helmet());
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined'));
 morgan.token('user-id', req => (req as express.Request).user?.id || '-');
