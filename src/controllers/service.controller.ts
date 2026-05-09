@@ -9,6 +9,58 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+const normalizeSearchValue = (value: unknown) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\u0b80-\u0bff\s-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const getSearchAliases = (query: string) => {
+  const normalized = normalizeSearchValue(query);
+  const aliases = new Set([normalized]);
+  const aliasGroups = [
+    ['plumb', 'plumber', 'plumbing', 'pipe', 'tap', 'toilet', 'drain', 'leak', 'water', 'குழாய்', 'தண்ணீர்', 'கசிவு', 'வடிகால்', 'கழிப்பறை'],
+    ['clean', 'cleaning', 'housekeeping', 'maid', 'கிளீனிங்', 'சுத்தம்'],
+    ['electric', 'electrician', 'wiring', 'power', 'மின்சாரம்'],
+    ['paint', 'painting', 'painter', 'பெயிண்ட்'],
+    ['garden', 'gardening', 'lawn', 'yard', 'தோட்டம்'],
+    ['repair', 'fix', 'maintenance', 'service', 'சரி', 'பழுது'],
+  ];
+
+  aliasGroups.forEach(group => {
+    if (group.some(term => normalized.includes(term))) {
+      group.forEach(term => aliases.add(term));
+    }
+  });
+
+  normalized.split(' ').filter(term => term.length > 1).forEach(term => aliases.add(term));
+  return Array.from(aliases).filter(Boolean);
+};
+
+const inferServiceTypeLinks = (services: any[], serviceTypes: any[]) =>
+  services.map((service: any) => {
+    const searchable = normalizeSearchValue([
+      service.title,
+      service.description,
+      ...(service.service_area || []),
+    ].filter(Boolean).join(' '));
+    const inferredTypes = serviceTypes
+      .filter((type: any) => {
+        const typeTerms = getSearchAliases([type.name, type.slug, type.description].filter(Boolean).join(' '));
+        return typeTerms.some(term => searchable.includes(term));
+      })
+      .slice(0, 6)
+      .map((service_type: any) => ({ service_type }));
+
+    return {
+      ...service,
+      provider_service_types: inferredTypes,
+    };
+  });
+
 const mapService = (service: any) => {
   const provider = Array.isArray(service.users) ? service.users[0] : service.users;
   const serviceTypes = service.provider_service_types?.map((item: any) => item.service_type).filter(Boolean) || [];
@@ -128,11 +180,22 @@ const hydratePublicServices = async (services: any[], req: Request) => {
     serviceTypesByServiceId.set(link.provider_service_id, currentLinks);
   });
 
-  return serviceRows.map((service: any) => ({
+  const hydratedRows = serviceRows.map((service: any) => ({
     ...service,
     users: providersById.get(service.provider_id) || null,
     provider_service_types: serviceTypesByServiceId.get(service.id) || [],
   }));
+
+  if (!linksError) return hydratedRows;
+
+  const { data: serviceTypes, error: serviceTypesError } = await supabaseAdmin
+    .from('service_types')
+    .select('*')
+    .eq('active', true);
+
+  if (serviceTypesError) throw serviceTypesError;
+
+  return inferServiceTypeLinks(hydratedRows, serviceTypes || []);
 };
 
 export const getPublicServiceBySlug = async (req: Request, res: Response): Promise<void> => {
@@ -177,6 +240,13 @@ export const getPublicServices = async (req: Request, res: Response): Promise<vo
     const provinceId = typeof req.query.provinceId === 'string' ? req.query.provinceId.trim() : '';
     const districtId = typeof req.query.districtId === 'string' ? req.query.districtId.trim() : '';
     const cityId = typeof req.query.cityId === 'string' ? req.query.cityId.trim() : '';
+    const search = typeof req.query.search === 'string'
+      ? req.query.search.trim()
+      : typeof req.query.q === 'string'
+        ? req.query.q.trim()
+        : '';
+    const categoryTerms = getSearchAliases(category);
+    const searchTerms = getSearchAliases(search);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(req.query.limit) || 12, 1), 50);
     const activeProviderUserIds = await getActiveProviderUserIds();
@@ -209,12 +279,23 @@ export const getPublicServices = async (req: Request, res: Response): Promise<vo
       const serviceTypes = service.provider_service_types?.map((item: any) => item.service_type).filter(Boolean) || [];
       const hasCountryTag = serviceArea.some((item: string) => item.startsWith('country:'));
       const countryMatches = !country || serviceArea.includes(`country:${country}`) || !hasCountryTag;
-      const categoryMatches = !category || category === 'all' || serviceTypes.some((type: any) => type.name === category);
+      const serviceTypeSearchable = normalizeSearchValue(serviceTypes.flatMap((type: any) => [type.name, type.slug, type.description]).filter(Boolean).join(' '));
+      const categoryMatches = !category || category === 'all' || serviceTypes.some((type: any) => type.name === category) || categoryTerms.some(term => serviceTypeSearchable.includes(term));
       const provinceMatches = !provinceId || serviceArea.includes(`province:${provinceId}`);
       const districtMatches = !districtId || serviceArea.includes(`district:${districtId}`);
       const cityMatches = !cityId || serviceArea.includes(`city:${cityId}`);
+      const provider = Array.isArray(service.users) ? service.users[0] : service.users;
+      const searchable = normalizeSearchValue([
+        service.title,
+        service.description,
+        provider?.name,
+        provider?.email,
+        ...serviceArea,
+        ...serviceTypes.flatMap((type: any) => [type.name, type.slug, type.description]),
+      ].filter(Boolean).join(' '));
+      const searchMatches = !searchTerms.length || searchTerms.some(term => searchable.includes(term));
 
-      return countryMatches && categoryMatches && provinceMatches && districtMatches && cityMatches;
+      return countryMatches && categoryMatches && provinceMatches && districtMatches && cityMatches && searchMatches;
     });
 
     const total = filtered.length;
